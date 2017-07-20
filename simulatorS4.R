@@ -48,20 +48,36 @@ setGeneric(
 	}
 )
 
-#----create OR interaction class----
+#----create AND interaction class----
 setClass(
-	Class = 'ORgraphGRN',
+	Class = 'graphGRN_AND',
 	contains = 'graphGRN'
 )
 
-setValidity('ORgraphGRN', validGRN_OR)
+setValidity('graphGRN_AND', validGRN_AND)
 
 setMethod(
 	f = 'initialize',
-	signature = 'ORgraphGRN',
+	signature = 'graphGRN_AND',
 	definition = initGRN
 )
 
+setMethod(
+	f = 'nodeData<-',
+	signature = c(self = 'graphGRN_AND', n = 'character', attr = 'character'),
+	definition = nodeDataSetter
+)
+
+setMethod(
+	f = 'edgeData<-',
+	signature = c(
+		self = 'graphGRN_AND',
+		from = 'character',
+		to = 'character',
+		attr = 'character'
+	),
+	definition = edgeDataSetter
+)
 
 
 
@@ -72,13 +88,19 @@ graphGRN<-function(nodes = character(), edgeL = list()){
 	return(grn)
 }
 
-graphGRN<-function(nodedf = data.frame(),edgedf = data.frame()){
-	nodeL=nodedf$gene
-	#add and nodes
-	andnodes=edgedf$regulator[edges$regulator]
-	
-	grn=new(Class = 'graphGRN',nodes=nodedf$gene, edgeL=edgeL, graphData=list('edgemode'='directed'))
-}
+# graphGRN<-function(nodedf = data.frame(),edgedf = data.frame()){
+# 	nodeL=nodedf$gene
+# 	#add and nodes
+# 	andnodes=edgedf$regulator[edges$regulator]
+# 	
+# 	grn=new(Class = 'graphGRN',nodes=nodedf$gene, edgeL=edgeL, graphData=list('edgemode'='directed'))
+# }
+
+#----use cases----
+grn=graphGRN()
+grn1=addNode(LETTERS[1:4],grn)
+grn1=addEdge('A','B',grn1)
+grn1=addEdge('A','C',grn1)
 
 # setClass(Class = 'A', slots = list(n='numeric'))
 # setValidity('A',function(object){if(object@n>100)stop('Error @ A')})

@@ -80,53 +80,30 @@ edgeDataSetter<-function(self, from, to, attr, value) {
 	return(self)
 }
 
-#----ORgraphGRN: functions----
-validGRN_OR<-function(object){
+#----graphGRN_AND: functions----
+validGRN_AND<-function(object){
 	if(length(nodes(object))!=0){
-		#RNA maximum in range
-		nodeRNAmax = unlist(nodeData(object,nodes(object),'rnamax'))
-		if(sum(is.na(nodeRNAmax))!=0){
-			stop('RNA maximum expression: missing values not allowed')
-		}
-		
-		#RNA degradation in range
-		nodeRNAdeg = unlist(nodeData(object,nodes(object),'rnadg'))
-		if(sum(is.na(nodeRNAdeg))!=0){
-			stop('RNA degradation rate: missing values not allowed')
-		}
-		
-		#Time constant in range
-		nodetau = unlist(nodeData(object,nodes(object),'rnadg'))
-		if(sum(is.na(nodetau))!=0){
-			stop('Time constant: missing values not allowed')
-		}
-		
-		#Interaction weight in range
 		edgeweight = unlist(edgeData(object,from=nodes(object),attr='weight'))
-		if(sum(is.na(edgeweight))!=0){
-			stop('Interaction weight: missing values not allowed')
-		}
-		
-		#EC50 in range
 		edgeEC50 = unlist(edgeData(object,from=nodes(object),attr='EC50'))
-		if(sum(is.na(edgeEC50))!=0){
-			stop('EC50: missing values not allowed')
-		}
-		
-		#Hill constant in range
 		edgen = unlist(edgeData(object,from=nodes(object),attr='n'))
-		if(sum(is.na(edgen))!=0){
-			stop('Hill constant: missing values not allowed')
+		
+		#check for missing values
+		nodetype = unlist(nodeData(object,nodes(object),'type'))
+		if(sum(nodetype %in% 'AND' &
+			   is.na(c(
+			   	edgen, edgeEC50, edgeweight
+			   )))!=0) {
+			stop('Missing parameters not allowed for OR interactions')
 		}
 	}
 	return(T)
 }
 
-initGRN_OR<-function(.Object, ...){
+initGRN_AND<-function(.Object, ...){
 	.Object = callNextMethod(.Object, ...)
 	
 	#set defaults for node and edge attributes
-	edgeDataDefaults(.Object,'type')='OR'
+	edgeDataDefaults(.Object,'type')='AND'
 	
 	validObject(.Object)
 	return(.Object)
