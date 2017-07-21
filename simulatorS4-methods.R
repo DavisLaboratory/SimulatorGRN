@@ -1,111 +1,224 @@
-#----graphGRN: functions----
-validGRN<-function(object){
-	if(length(nodes(object))!=0){
-		#RNA maximum in range
-		nodeRNAmax = unlist(nodeData(object,nodes(object),'rnamax'))
-		if(sum(nodeRNAmax<0 | nodeRNAmax>1,na.rm=T)!=0){
-			stop('RNA maximum expression has to be between 0 and 1')
-		}
-		
-		#RNA degradation in range
-		nodeRNAdeg = unlist(nodeData(object,nodes(object),'rnadg'))
-		if(sum(nodeRNAdeg<0 | nodeRNAdeg>1,na.rm=T)!=0){
-			stop('RNA degradation rate has to be between 0 and 1')
-		}
-		
-		#Time constant in range
-		nodetau = unlist(nodeData(object,nodes(object),'rnadg'))
-		if(sum(nodetau<=0,na.rm=T)!=0){
-			stop('Time constant must be positive')
-		}
-		
-		#Interaction weight in range
-		edgeweight = unlist(edgeData(object,from=nodes(object),attr='weight'))
-		if(sum(edgeweight<0 | edgeweight>1,na.rm=T)!=0){
-			stop('Interaction weight has to be between 0 and 1')
-		}
-		
-		#EC50 in range
-		edgeEC50 = unlist(edgeData(object,from=nodes(object),attr='EC50'))
-		if(sum(edgeEC50<0 | edgeEC50>1,na.rm=T)!=0){
-			stop('EC50 has to be between 0 and 1')
-		}
-		
-		#Hill constant in range
-		edgen = unlist(edgeData(object,from=nodes(object),attr='n'))
-		if(sum(edgen==1,na.rm=T)!=0){
-			stop('Hill constant cannot be 1')
-		}
-		
-		#check for missing values
-		nodetype = unlist(nodeData(object,nodes(object),'type'))
-		if(sum(nodetype %in% 'OR' &
-			   is.na(c(
-			   	nodeRNAmax, nodeRNAdeg, nodetau, edgen, edgeEC50, edgeweight
-			   )))!=0) {
-			stop('Missing parameters not allowed for OR interactions')
-		}
+#----Node: functions----
+validNode <- function(object) {
+	#RNA maximum in range
+	if (!is.na(object@rnamax) & (object@rnamax < 0 | object@rnamax > 1)) {
+		stop('RNA maximum expression has to be between 0 and 1')
 	}
-	return(T)
+	
+	#RNA degradation in range
+	if (!is.na(object@rnadeg) & (object@rnadeg < 0 | object@rnadeg > 1)) {
+		stop('RNA degradation rate has to be between 0 and 1')
+	}
+	
+	#Time constant in range
+	if (!is.na(object@tau) & (object@tau <= 0)) {
+		stop('Time constant must be positive')
+	}
+	
+	#Incoming edges
+	if (!all(sapply(object@inedges, is, 'Edge'))) {
+		stop('All inedges must be valid Edge objects')
+	}
+	
+	#Incoming edges: check that all edges have to as this node
+	testin = sapply(object@inedges, function(x) {
+		return(identical(x$to$name, object$name))
+	})
+	
+	if (!all(testin)) {
+		stop('All interactions must have the \'to\' node as the current node')
+	}
+	
+	#check that all regulators are unique
+	regnames = sapply(object@inedges, function(x) {
+		sapply(x$from, slot, 'name')
+	})
+	if (length(unique(regnames)) < length(regnames)) {
+		stop('All regulators must be unique')
+	}
+	
+	return(TRUE)
 }
 
-initGRN<-function(.Object, ...){
-	.Object = callNextMethod(.Object, ...)
-	.Object@nodeParams = c('rnamax','rnadg','tau')
-	.Object@edgeParams = c('weight','EC50','n')
-	
-	#set defaults for node and edge attributes
-	nodeDataDefaults(.Object,'rnamax')=1
-	nodeDataDefaults(.Object,'rnadg')=1
-	nodeDataDefaults(.Object,'tau')=1
-	nodeDataDefaults(.Object,'type')='OR'
-	edgeDataDefaults(.Object,'weight')=1
-	edgeDataDefaults(.Object,'EC50')=0.5
-	edgeDataDefaults(.Object,'n')=1.39
+initNode <- function(.Object, ..., name, rnamax = 1, rnadeg = 1, tau = 1, inedges = list()) {
+	.Object@name = name
+	.Object@rnamax = rnamax
+	.Object@rnadeg = rnadeg
+	.Object@tau = tau
+	.Object@inedges = inedges
 	
 	validObject(.Object)
 	return(.Object)
 }
 
-nodeDataSetter<-function(self, n, attr, value) {
-	self = callNextMethod()
-	validObject(self)
-	return(self)
-}
-
-
-edgeDataSetter<-function(self, from, to, attr, value) {
-	self = callNextMethod()
-	validObject(self)
-	return(self)
-}
-
-#----graphGRN_AND: functions----
-validGRN_AND<-function(object){
-	if(length(nodes(object))!=0){
-		edgeweight = unlist(edgeData(object,from=nodes(object),attr='weight'))
-		edgeEC50 = unlist(edgeData(object,from=nodes(object),attr='EC50'))
-		edgen = unlist(edgeData(object,from=nodes(object),attr='n'))
-		
-		#check for missing values
-		nodetype = unlist(nodeData(object,nodes(object),'type'))
-		if(sum(nodetype %in% 'AND' &
-			   is.na(c(
-			   	edgen, edgeEC50, edgeweight
-			   )))!=0) {
-			stop('Missing parameters not allowed for OR interactions')
-		}
+generateRateEqn <- function(object) {
+	inedges = object$inedges
+	#no rate equations for input nodes
+	if (length(inedges) == 0) {
+		return('')
 	}
-	return(T)
+	
+	#generate activation functions for each interaction
+	actEqns = sapply(inedges, generateActivationEqn)
+	act = paste(actEqns, collapse = ' + ')
+	
+	#subtract the combinations
+	nEq = length(actEqns)
+	if (nEq > 1) {
+		combEqns = character(0)
+		for (i in 2:nEq) {
+			combs = combn(actEqns, i)
+			combEqns = c(combEqns, apply(combs, 2, paste, collapse = ' * '))
+		}
+		
+		act = paste(c(act, combEqns), collapse = ' - ')
+	}
+	
+	#generate rate equation
+	rateEqn = paste('(', act, ')', sep = '')
+	rateEqn = paste(rateEqn, object@rnamax, sep = ' * ')
+	degradationEqn = paste(object@rnadeg, object@name, sep = ' * ')
+	rateEqn = paste(rateEqn, degradationEqn, sep = ' - ')
+	return(rateEqn)
 }
 
-initGRN_AND<-function(.Object, ...){
-	.Object = callNextMethod(.Object, ...)
+#----Edge: functions----
+validEdge <- function(object) {
+	#RNA maximum in range
+	if (any(is.na(object@weight)) | sum(object@weight < 0 | object@weight > 1) > 0) {
+		stop('Interaction weight has to be between 0 and 1')
+	}
 	
-	#set defaults for node and edge attributes
-	edgeDataDefaults(.Object,'type')='AND'
+	#RNA degradation in range
+	if (any(is.na(object@EC50)) | sum(object@EC50 < 0 | object@EC50 > 1) > 0) {
+		stop('EC50 has to be between 0 and 1')
+	}
+	
+	#Time constant in range
+	if (any(is.na(object@n)) | sum(object@n == 1) > 0) {
+		stop('Hill constant (n) cannot be 1')
+	}
+	
+	#from are all of class Node
+	if (!all(sapply(object@from, is, 'Node'))) {
+		stop('All from nodes must be of class \'Node\'')
+	}
+	
+	return(TRUE)
+}
+
+initEdge <- function(.Object, ..., from, to, weight = 1, EC50 = 0.5, n = 1.39, activation = T) {
+	.Object@from = from
+	.Object@to = to
+	.Object@weight = weight
+	.Object@EC50 = EC50
+	.Object@n = n
+	.Object@activation = activation
 	
 	validObject(.Object)
 	return(.Object)
 }
+
+#----EdgeOr: functions----
+validEdgeOr <- function(object) {
+	#Weight length is 1
+	if (length(object@weight) != 1) {
+		stop('Only 1 parameter for the weight should be provided for OR interactions')
+	}
+	
+	#EC50 length is 1
+	if (length(object@EC50) != 1) {
+		stop('Only 1 parameter for the EC50 should be provided for OR interactions')
+	}
+	
+	#Hill constant length is 1
+	if (length(object@n) != 1) {
+		stop('Only 1 parameter for the Hill constant(n) should be provided for OR interactions')
+	}
+	
+	#Number of regulators is 1
+	if (length(object@from) != 1) {
+		stop('Only 1 input node should be provided for OR interactions')
+	}
+	
+	return(TRUE)
+}
+
+generateActivationEqnOr <- function(object) {
+	e = object
+	#generate activation eqn
+	act = paste('fAct(', e$from[[1]]$name, ',', e$EC50, ',', e$n, ')', sep =	'')
+	if (!e$activation) {
+		act = paste('(1-', act, ')', sep = '')
+	}
+	act = paste(e$weight, act, sep = ' * ')
+	
+	return(act)
+}
+
+#----EdgeAnd: functions----
+validEdgeAnd <- function(object) {
+	numint = length(object@from) #number of interactors
+	
+	#Weight length is 1
+	if (length(object@weight) != 1) {
+		stop('Only 1 parameter for the weight should be provided for AND interactions')
+	}
+	
+	#EC50 length matches number of interactors
+	if (length(object@EC50) != numint) {
+		stop('Missing EC50 parameters for the AND interaction')
+	}
+	
+	#Hill constant length matches number of interactors
+	if (length(object@n) != numint) {
+		stop('Missing Hill constant(n) parameters for the AND interaction')
+	}
+	
+	#Hill constant length matches number of interactors
+	if (length(object@activation) != numint) {
+		stop('Missing activation/repression status for the AND interaction')
+	}
+	
+	return(TRUE)
+}
+
+initEdgeAnd <- function(.Object, ..., from, to, weight = 1, EC50 = c(), n = c(), activation = c()) {
+	numint = length(from)
+	if (length(EC50) == 0)
+		EC50 = rep(0.5, numint)
+	if (length(n) == 0)
+		n = rep(1.39, numint)
+	if (length(activation) == 0)
+		activation = rep(T, numint)
+	
+	.Object@from = from
+	.Object@to = to
+	.Object@weight = weight
+	.Object@EC50 = EC50
+	.Object@n = n
+	.Object@activation = activation
+	
+	validObject(.Object)
+	return(.Object)
+}
+
+generateActivationEqnAnd <- function(object) {
+	e = object
+	
+	#generate AND activation eqn
+	act = character(length(e@from))
+	for (i in 1:length(act)) {
+		act[i] = paste('fAct(', e@from[[i]]$name, ',', e@EC50[[i]], ',', e@n[[i]], ')', sep =	'')
+		if (!e$activation[[i]]) {
+			act[i] = paste('(1-', act[i], ')', sep = '')
+		}
+	}
+	
+	act = paste(c(e$weight, act), collapse = ' * ')
+	
+	return(act)
+}
+
+
 

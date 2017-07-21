@@ -1,110 +1,166 @@
-library(graph)
 source('simulatorS4-methods.R')
 
-#----create graphGRN class----
+#----Node----
 setClass(
-	Class = 'graphGRN',
-	contains = 'graphNEL',
-	slots = list(nodeParams = 'character',
-				 edgeParams = 'character')
+	Class = 'Node',
+	slots = list(
+		name = 'character',
+		tau = 'numeric',
+		rnamax = 'numeric',
+		rnadeg = 'numeric',
+		inedges = 'list'
+	),
+	prototype = list(
+		tau = 1,
+		rnamax = 1,
+		rnadeg = 1,
+		inedges = list()
+	)
 )
 
-setValidity('graphGRN', validGRN)
+setValidity('Node',validNode)
 
 setMethod(
 	f = 'initialize',
-	signature = 'graphGRN',
-	definition = initGRN
+	signature = 'Node',
+	definition = initNode
 )
 
 setMethod(
-	f = 'nodeData<-',
-	signature = c(self = 'graphGRN', n = 'character', attr = 'character'),
-	definition = nodeDataSetter
+	f = '$',
+	signature = 'Node',
+	definition = function(x, name) {
+		return(slot(x, name))
+	}
 )
 
 setMethod(
-	f = 'edgeData<-',
-	signature = c(
-		self = 'graphGRN',
-		from = 'character',
-		to = 'character',
-		attr = 'character'
-	),
-	definition = edgeDataSetter
+	f = '$<-',
+	signature = 'Node',
+	definition = function(x, name, value) {
+		print(value)
+		slot(x, name)<-value
+		validObject(x)
+		return(x)
+	}
 )
 
-setGeneric(
-	name = 'addComplexInteraction',
-	def = function(node) {
-		standardGeneric('addComplexInteraction')
+setMethod(
+	f = 'show',
+	signature = 'Node',
+	definition = function(object) {
+		# str=''
+		# str = paste(str, paste('Name: ', object@name, sep = ''), '\n')
+		# str = paste(str, paste('Time const: ', object@tau, sep = ''), '\n')
+		# str = paste(str, paste('RNA max: ', object@rnamax, sep = ''), '\n')
+		# str = paste(str, paste('RNA degradation rate: ', object@rnadeg, sep = ''), '\n')
+		# print(str)
 	}
 )
 
 setGeneric(
 	name = 'generateEqn',
-	def = function(node) {
+	def = function(object){
 		standardGeneric('generateEqn')
 	}
 )
 
-#----create AND interaction class----
-setClass(
-	Class = 'graphGRN_AND',
-	contains = 'graphGRN'
+setMethod(
+	f = 'generateEqn',
+	signature = 'Node',
+	definition = generateRateEqn
 )
 
-setValidity('graphGRN_AND', validGRN_AND)
+#----Edge----
+setClass(
+	Class = 'Edge',
+	slots = list(
+		from = 'list',
+		to = 'Node',
+		weight = 'numeric',
+		EC50 = 'numeric',
+		n = 'numeric',
+		activation = 'logical'
+	),
+	prototype = list(
+		weight = 1,
+		EC50 = 0.5,
+		n = 1.39,
+		activation = T
+	)
+)
+
+setValidity('Edge',validEdge)
 
 setMethod(
 	f = 'initialize',
-	signature = 'graphGRN_AND',
-	definition = initGRN
+	signature = 'Edge',
+	definition = initEdge
 )
 
 setMethod(
-	f = 'nodeData<-',
-	signature = c(self = 'graphGRN_AND', n = 'character', attr = 'character'),
-	definition = nodeDataSetter
+	f = '$',
+	signature = 'Edge',
+	definition = function(x, name) {
+		return(slot(x, name))
+	}
 )
 
 setMethod(
-	f = 'edgeData<-',
-	signature = c(
-		self = 'graphGRN_AND',
-		from = 'character',
-		to = 'character',
-		attr = 'character'
-	),
-	definition = edgeDataSetter
+	f = '$<-',
+	signature = 'Edge',
+	definition = function(x, name, value) {
+		slot(x, name)<-value
+		validObject(x)
+		return(x)
+	}
 )
 
+setMethod(
+	f = 'show',
+	signature = 'Edge',
+	definition = function(object) {
+		return('')
+	}
+)
 
+setGeneric(
+	name = 'generateActivationEqn',
+	def = function(object){
+		standardGeneric('generateActivationEqn')
+	}
+)
 
+#----EdgeOr----
+setClass(
+	Class = 'EdgeOr',
+	contains = 'Edge'
+)
 
+setValidity('EdgeOr',validEdgeOr)
 
-graphGRN<-function(nodes = character(), edgeL = list()){
-	grn=new(Class = 'graphGRN',nodes=nodes, edgeL=edgeL, edgemode='directed')
-	return(grn)
-}
+setMethod(
+	f = 'generateActivationEqn',
+	signature = 'EdgeOr',
+	definition = generateActivationEqnOr
+)
 
-# graphGRN<-function(nodedf = data.frame(),edgedf = data.frame()){
-# 	nodeL=nodedf$gene
-# 	#add and nodes
-# 	andnodes=edgedf$regulator[edges$regulator]
-# 	
-# 	grn=new(Class = 'graphGRN',nodes=nodedf$gene, edgeL=edgeL, graphData=list('edgemode'='directed'))
-# }
+#----EdgeAnd----
+setClass(
+	Class = 'EdgeAnd',
+	contains = 'Edge'
+)
 
-#----use cases----
-grn=graphGRN()
-grn1=addNode(LETTERS[1:4],grn)
-grn1=addEdge('A','B',grn1)
-grn1=addEdge('A','C',grn1)
+setValidity('EdgeAnd',validEdgeAnd)
 
-# setClass(Class = 'A', slots = list(n='numeric'))
-# setValidity('A',function(object){if(object@n>100)stop('Error @ A')})
-# inc=function(object){object@n=object@n+1;validObject(object);return(object)}
-# setGeneric('inc')
-# setClass(Class = 'B', contains = 'A')
-# setValidity('B',function(object){if(object@n>100)stop('Error @ B')})
+setMethod(
+	f = 'initialize',
+	signature = 'EdgeAnd',
+	definition = initEdgeAnd
+)
+
+setMethod(
+	f = 'generateActivationEqn',
+	signature = 'EdgeAnd',
+	definition = generateActivationEqnAnd
+)
