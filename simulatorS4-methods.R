@@ -115,6 +115,12 @@ initEdge <- function(.Object, ..., from, to, weight = 1, EC50 = 0.5, n = 1.39, a
 	.Object@n = n
 	.Object@activation = activation
 	
+	#generate name
+	name = sapply(from, function(x) x$name)
+	name = paste(name, collapse = '')
+	name = paste(name, to$name, sep = '->')
+	.Object@name = name
+	
 	validObject(.Object)
 	return(.Object)
 }
@@ -160,6 +166,11 @@ generateActivationEqnOr <- function(object) {
 validEdgeAnd <- function(object) {
 	numint = length(object@from) #number of interactors
 	
+	#number of inputs
+	if(numint == 1){
+		stop('AND interaction requires at least 2 regulators')
+	}
+	
 	#Weight length is 1
 	if (length(object@weight) != 1) {
 		stop('Only 1 parameter for the weight should be provided for AND interactions')
@@ -192,13 +203,7 @@ initEdgeAnd <- function(.Object, ..., from, to, weight = 1, EC50 = c(), n = c(),
 	if (length(activation) == 0)
 		activation = rep(T, numint)
 	
-	.Object@from = from
-	.Object@to = to
-	.Object@weight = weight
-	.Object@EC50 = EC50
-	.Object@n = n
-	.Object@activation = activation
-	
+	.Object = callNextMethod(.Object = .Object, from = from, to = to, weight = weight, EC50 = EC50, n = n, activation = activation)
 	validObject(.Object)
 	return(.Object)
 }
@@ -227,9 +232,19 @@ validGraphGRN <- function(object) {
 		stop('All nodes must be of class \'Node\'')
 	}
 	
+	#check names of nodeset
+	if (!all(sapply(object@nodeset, function(x) x$name) == names(object@nodeset))){
+		stop('Invalid graph generated. Use the \'addNode\' method to add a node to the graph.')
+	}
+	
 	#nodeset are all of class Node
 	if (!all(sapply(object@edgeset, is, 'Edge'))) {
 		stop('All nodes must be of class \'Edge\'')
+	}
+	
+	#check names of nodeset
+	if (!all(sapply(object@edgeset, function(x) x$name) == names(object@edgeset))){
+		stop('Invalid graph generated. Use the \'addEdge\' method to add an edge to the graph.')
 	}
 	
 	return(TRUE)
@@ -240,6 +255,33 @@ initGraphGRN <- function(.Object, ..., nodeset = list(), edgeset = list()) {
 	.Object@edgeset = edgeset
 	
 	validObject(.Object)
+	
 	return(.Object)
+}
+
+addEdgeHelper<-function(graph, edge){
+	graph@edgeset = c(graph@edgeset, edge)
+	
+	#update node inedges information
+	to$inedges = c(to$inedges, edge)
+	graph@nodeset[[to$name]] = to
+	validObject(graph)
+	
+	#named entry to graph structure
+	names(graph@edgeset)[length(graph@edgeset)] = edge$name
+	validObject(graph)
+	
+	return(graph)
+}
+
+getEdgeClass<-function(edgetype){
+	if(edgetype %in% 'or')
+		edgeclass = 'EdgeOr'
+	else if(edgetype %in% 'and')
+		edgeclass = 'EdgeAnd'
+	else
+		stop('Unrecognised edgetype')
+	
+	return(edgeclass)
 }
 
