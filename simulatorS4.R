@@ -9,12 +9,6 @@ setClass(
 		rnamax = 'numeric',
 		rnadeg = 'numeric',
 		inedges = 'list'
-	),
-	prototype = list(
-		tau = 1,
-		rnamax = 1,
-		rnadeg = 1,
-		inedges = list()
 	)
 )
 
@@ -81,12 +75,6 @@ setClass(
 		EC50 = 'numeric',
 		n = 'numeric',
 		activation = 'logical'
-	),
-	prototype = list(
-		weight = 1,
-		EC50 = 0.5,
-		n = 1.39,
-		activation = T
 	)
 )
 
@@ -164,3 +152,28 @@ setMethod(
 	signature = 'EdgeAnd',
 	definition = generateActivationEqnAnd
 )
+
+#----GraphGRN----
+setClass(
+	Class = 'GraphGRN',
+	slots = list(
+		nodeset = 'list',
+		edgeset = 'list'
+	)
+)
+
+setValidity('GraphGRN', validGraphGRN)
+
+setMethod(
+	f = 'initialize',
+	signature = 'GraphGRN',
+	definition = initGraphGRN
+)
+
+setGeneric(
+	name = 'addNode',
+	def = function(node1, node2) {
+		standardGeneric('addNode')
+	}
+)
+

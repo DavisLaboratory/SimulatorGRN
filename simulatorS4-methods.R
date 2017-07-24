@@ -220,5 +220,26 @@ generateActivationEqnAnd <- function(object) {
 	return(act)
 }
 
+#----GraphGRN: functions----
+validGraphGRN <- function(object) {
+	#nodeset are all of class Node
+	if (!all(sapply(object@nodeset, is, 'Node'))) {
+		stop('All nodes must be of class \'Node\'')
+	}
+	
+	#nodeset are all of class Node
+	if (!all(sapply(object@edgeset, is, 'Edge'))) {
+		stop('All nodes must be of class \'Edge\'')
+	}
+	
+	return(TRUE)
+}
 
+initGraphGRN <- function(.Object, ..., nodeset = list(), edgeset = list()) {
+	.Object@nodeset = nodeset
+	.Object@edgeset = edgeset
+	
+	validObject(.Object)
+	return(.Object)
+}
 
