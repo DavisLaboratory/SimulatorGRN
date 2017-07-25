@@ -1,5 +1,5 @@
-source('simulatorS4-methods.R')
-source('simulatorS4.R')
+source('GraphGRN-methods.R')
+source('GraphGRN.R')
 
 #----case 1----
 n1=new('Node', name='A')

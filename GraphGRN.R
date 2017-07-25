@@ -1,5 +1,3 @@
-source('simulatorS4-methods.R')
-
 #----Node----
 setClass(
 	Class = 'Node',
