@@ -1,5 +1,8 @@
 source('GraphGRN-methods.R')
 source('GraphGRN.R')
+source('SimulationGRN-methods.R')
+source('SimulationGRN.R')
+library(nleqslv)
 
 #----case 1----
 n1=new('Node', name='A')
@@ -52,7 +55,7 @@ grn2=addEdge(grn2,'E','I',activation=T)
 grn2=addEdge(grn2,'C','F',activation=T)
 grn2=addEdge(grn2,'F','K',activation=T)
 grn2=addEdge(grn2,c('D','E'),'H',edgetype='and')
-grn2=addEdge(grn2,c('E','F'),'J',edgetype='and',activation=c(T,F))
+grn2=addEdge(grn2,c('E','F'),'J',edgetype='and',activation=c(F,F))
 ode=generateODE(grn2)
 exprs=numeric(9)
 names(exprs)=LETTERS[4:12]
@@ -60,5 +63,7 @@ ext=c(0.6,0.6,0.6)
 names(ext)=LETTERS[1:3]
 nleqslv(exprs,ode,jac=NULL,grn2,ext,jacobian=T)
 
-
+#----case 4----
+sim1=new('SimulationGRN', graph = grn2, externalInputs = c('A' = 0.5, 'B' = 0.7, 'C' = 0.5))
+solveODE(sim1)
 

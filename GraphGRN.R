@@ -10,7 +10,7 @@ setClass(
 	)
 )
 
-setValidity('Node',validNode)
+setValidity('Node', validNode)
 
 setMethod(
 	f = 'initialize',
@@ -74,7 +74,7 @@ setClass(
 	)
 )
 
-setValidity('Edge',validEdge)
+setValidity('Edge', validEdge)
 
 setMethod(
 	f = 'initialize',
@@ -125,7 +125,7 @@ setClass(
 	contains = 'Edge'
 )
 
-setValidity('EdgeOr',validEdgeOr)
+setValidity('EdgeOr', validEdgeOr)
 
 setMethod(
 	f = 'generateActivationEqn',
@@ -139,7 +139,7 @@ setClass(
 	contains = 'Edge'
 )
 
-setValidity('EdgeAnd',validEdgeAnd)
+setValidity('EdgeAnd', validEdgeAnd)
 
 setMethod(
 	f = 'initialize',
@@ -367,6 +367,38 @@ setReplaceMethod(
 	}
 )
 
+#----GraphGRN:nodenames----
+setGeneric(
+	name = 'nodenames',
+	def = function(graph) {
+		standardGeneric('nodenames')
+	}
+)
+
+setMethod(
+	f = 'nodenames',
+	signature = c('GraphGRN'),
+	definition = function(graph) {
+		return(names(graph@nodeset))
+	}
+)
+
+#----GraphGRN:edgenames----
+setGeneric(
+	name = 'edgenames',
+	def = function(graph) {
+		standardGeneric('edgenames')
+	}
+)
+
+setMethod(
+	f = 'edgenames',
+	signature = c('GraphGRN'),
+	definition = function(graph) {
+		return(names(graph@edgeset))
+	}
+)
+
 #----GraphGRN: generateODE----
 setGeneric(
 	name = 'generateODE',
@@ -414,7 +446,5 @@ setMethod(
 		return(eval(parse(text = fn)))
 	}
 )
-
-
 
 

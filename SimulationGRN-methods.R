@@ -15,14 +15,43 @@ validSimulationGRN <- function(object) {
 		stop('Global noise ratio must be between 0 and 1')
 	}
 	
+	#external inputs
+	if (is.null(names(object@externalInputs)) |
+		!all(names(object@externalInputs) %in% getInputNodes(object@graph))) {
+		stop('Invalid external inputs vector, named vector expected')
+	}
+	
 	return(TRUE)
 }
 
-initSimulationGRN <- function(.Object, ..., graph, noiseL = 0, noiseG = 0) {
+initSimulationGRN <- function(.Object, ..., graph, externalInputs, noiseL = 0, noiseG = 0, seed = sample.int(1e12,1)) {
+	if(missing(externalInputs)){
+		inputNodes = getInputNodes(graph)
+		externalInputs = numeric(length(inputNodes)) + 0.5
+		names(externalInputs) = inputNodes
+	}
+	
 	.Object@graph = graph
 	.Object@noiseL = noiseL
 	.Object@noiseG = noiseG
+	.Object@seed = seed
+	.Object@externalInputs = externalInputs
+	.Object@solution = solveSteadyState(.Object)
 	
 	validObject(.Object)
 	return(.Object)
+}
+
+solveSteadyState <- function(object) {
+	ode = generateODE(object@graph)
+	ext = object@externalInputs
+	graph = object@graph
+	nodes = setdiff(nodenames(graph), names(ext))
+	exprs = numeric(length(nodes))
+	names(exprs) = nodes
+	
+	soln = nleqslv(exprs, ode, jac = NULL, graph, ext)
+	soln = c(soln$x, object@externalInputs)
+	soln = soln[order(names(soln))]
+	return(soln)
 }
