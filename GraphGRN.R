@@ -32,7 +32,6 @@ setMethod(
 	f = '$<-',
 	signature = 'Node',
 	definition = function(x, name, value) {
-		print(value)
 		slot(x, name)<-value
 		validObject(x)
 		return(x)
@@ -43,12 +42,10 @@ setMethod(
 	f = 'show',
 	signature = 'Node',
 	definition = function(object) {
-		# str=''
-		# str = paste(str, paste('Name: ', object@name, sep = ''), '\n')
-		# str = paste(str, paste('Time const: ', object@tau, sep = ''), '\n')
-		# str = paste(str, paste('RNA max: ', object@rnamax, sep = ''), '\n')
-		# str = paste(str, paste('RNA degradation rate: ', object@rnadeg, sep = ''), '\n')
-		# print(str)
+		print(paste('Name: ', object@name, sep = ''))
+		print(paste('Time const: ', object@tau, sep = ''))
+		print(paste('RNA max: ', object@rnamax, sep = ''))
+		print(paste('RNA degradation rate: ', object@rnadeg, sep = ''))
 	}
 )
 
@@ -113,7 +110,7 @@ setMethod(
 	f = 'show',
 	signature = 'Edge',
 	definition = function(object) {
-		return('')
+		return(NULL)
 	}
 )
 
@@ -217,23 +214,6 @@ setMethod(
 	}
 )
 
-#----GraphGRN:getNode----
-setGeneric(
-	name = 'getNode',
-	def = function(graph, nodename) {
-		standardGeneric('getNode')
-	}
-)
-
-setMethod(
-	f = 'getNode',
-	signature = c('GraphGRN', 'character'),
-	definition = function(graph, nodename) {
-		nodeObj = grn@nodeset[[nodename]]
-		return(nodeObj)
-	}
-)
-
 #----GraphGRN:addEdge----
 setGeneric(
 	name = 'addEdge',
@@ -287,3 +267,156 @@ setMethod(
 		return(graph)
 	}
 )
+
+#----GraphGRN:getEdge----
+setGeneric(
+	name = 'getEdge',
+	def = function(graph, from, to) {
+		standardGeneric('getEdge')
+	}
+)
+
+setGeneric(
+	name = 'getEdge<-',
+	def = function(graph, from, to, value) {
+		standardGeneric('getEdge<-')
+	}
+)
+
+setMethod(
+	f = 'getEdge',
+	signature = c('GraphGRN', 'character', 'character'),
+	definition = function(graph, from, to) {
+		#generate name
+		edgename = paste(from, collapse = '')
+		edgename = paste(edgename, to, sep = '->')
+		
+		edgeObj = graph@edgeset[[edgename]]
+		return(edgeObj)
+	}
+)
+
+setReplaceMethod(
+	f = 'getEdge',
+	signature = c('GraphGRN', 'character', 'character', 'Edge'),
+	definition = function(graph, from, to, value) {
+		#generate name
+		edgename = paste(from, collapse = '')
+		edgename = paste(edgename, to, sep = '->')
+		
+		graph@edgeset[[edgename]] = value
+		return(graph)
+	}
+)
+
+#----GraphGRN:getInputNode----
+setGeneric(
+	name = 'getInputNodes',
+	def = function(graph, nodename) {
+		standardGeneric('getInputNodes')
+	}
+)
+
+setMethod(
+	f = 'getInputNodes',
+	signature = c('GraphGRN'),
+	definition = function(graph) {
+		inputnodes = sapply(graph@nodeset, function(x) {
+			nodename = NA
+			if (length(x$inedges) == 0) {
+				nodename = x$name
+			}
+			return(nodename)
+		})
+		
+		inputnodes = inputnodes[!is.na(inputnodes)]
+		names(inputnodes) = NULL
+		
+		return(inputnodes)
+	}
+)
+
+#----GraphGRN:getNode----
+setGeneric(
+	name = 'getNode',
+	def = function(graph, nodename) {
+		standardGeneric('getNode')
+	}
+)
+
+setGeneric(
+	name = 'getNode<-',
+	def = function(graph, nodename, value) {
+		standardGeneric('getNode<-')
+	}
+)
+
+setMethod(
+	f = 'getNode',
+	signature = c('GraphGRN', 'character'),
+	definition = function(graph, nodename) {
+		nodeObj = graph@nodeset[[nodename]]
+		return(nodeObj)
+	}
+)
+
+setReplaceMethod(
+	f = 'getNode',
+	signature = c('GraphGRN', 'character', 'Node'),
+	definition = function(graph, nodename, value) {
+		graph@nodeset[[nodename]] = value
+		return(graph)
+	}
+)
+
+#----GraphGRN: generateODE----
+setGeneric(
+	name = 'generateODE',
+	def = function(graph) {
+		standardGeneric('generateODE')
+	}
+)
+
+setMethod(
+	f = 'generateODE',
+	signature = c('GraphGRN'),
+	definition = function(graph) {
+		fn = 'function(exprs, graph, externalInputs) {'
+		
+		#define the activation function
+		fn = paste(fn, '\tfAct <- function(TF, EC50 = 0.5, n = 1.39) {', sep = '\n')
+		fn = paste(fn, '\t\tB = (EC50 ^ n - 1) / (2 * EC50 ^ n - 1)', sep = '\n')
+		fn = paste(fn, '\t\tK_n = (B - 1)', sep = '\n')
+		fn = paste(fn, '\t\tact = B * TF ^ n / (K_n + TF ^ n)', sep = '\n')
+		fn = paste(fn, '\t\t', sep = '\n')
+		fn = paste(fn, '\t\treturn(act)', sep = '\n')
+		fn = paste(fn, '\t}', sep = '\n')
+		fn = paste(fn, '\t', sep = '\n')
+		
+		#function body
+		fn = paste(fn, '\tparms = c(list(), externalInputs, exprs)', sep = '\n')
+		fn = paste(fn, '\trates = exprs * 0', sep = '\n')
+		fn = paste(fn, '\trates = with(parms, {', sep = '\n')
+		#start with: create equations
+		inputNodes = getInputNodes(graph)
+		for (node in graph@nodeset) {
+			if(node$name %in% inputNodes)
+				next
+			eqn = paste('\t\t', 'rates[\"', node$name, '\"] = ', generateRateEqn(node), sep = '')
+			fn = paste(fn, eqn, sep = '\n')
+		}
+		
+		#end with
+		fn = paste(fn, '\t\treturn(rates)', sep = '\n')
+		fn = paste(fn, '\t})', sep = '\n')
+		fn = paste(fn, '\n\treturn(rates)', sep = '\n')
+		#end function
+		fn = paste(fn, '}', sep = '\n')
+		
+		return(eval(parse(text = fn)))
+	}
+)
+
+
+
+

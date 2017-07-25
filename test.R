@@ -37,3 +37,28 @@ print(generateRateEqn(grn@nodeset[['A']]))
 print(generateRateEqn(grn@nodeset[['B']]))
 print(generateRateEqn(grn@nodeset[['C']]))
 print(generateRateEqn(grn@nodeset[['D']]))
+
+#----case 3----
+grn2=new('GraphGRN')
+for (i in LETTERS[1:12]){
+	grn2=addNode(grn2,i)
+}
+
+grn2=addEdge(grn2,'A','L',activation=T)
+grn2=addEdge(grn2,'A','D',activation=T)
+grn2=addEdge(grn2,'D','G',activation=T)
+grn2=addEdge(grn2,'B','E',activation=T)
+grn2=addEdge(grn2,'E','I',activation=T)
+grn2=addEdge(grn2,'C','F',activation=T)
+grn2=addEdge(grn2,'F','K',activation=T)
+grn2=addEdge(grn2,c('D','E'),'H',edgetype='and')
+grn2=addEdge(grn2,c('E','F'),'J',edgetype='and',activation=c(T,F))
+ode=generateODE(grn2)
+exprs=numeric(9)
+names(exprs)=LETTERS[4:12]
+ext=c(0.6,0.6,0.6)
+names(ext)=LETTERS[1:3]
+nleqslv(exprs,ode,jac=NULL,grn2,ext,jacobian=T)
+
+
+
