@@ -33,6 +33,7 @@ validNode <- function(object) {
 	regnames = sapply(object@inedges, function(x) {
 		sapply(x$from, slot, 'name')
 	})
+	regnames = as.vector(regnames)
 	if (length(unique(regnames)) < length(regnames)) {
 		stop('All regulators must be unique')
 	}
@@ -283,5 +284,19 @@ getEdgeClass<-function(edgetype){
 		stop('Unrecognised edgetype')
 	
 	return(edgeclass)
+}
+
+#----All classes----
+maxPrint <- function(charvec, maxprint = 10, len = NULL) {
+	if(is.null(len)){
+		len = length(charvec)
+	}
+	txt = paste0('(', len, ')')
+	
+	if (length(charvec) > maxprint) {
+		charvec = c(charvec[1:maxprint],  '...')
+	}
+	txt = paste(txt, paste(charvec, collapse = ', '))
+	return(txt)
 }
 

@@ -55,3 +55,4 @@ solveSteadyState <- function(object) {
 	soln = soln[order(names(soln))]
 	return(soln)
 }
+

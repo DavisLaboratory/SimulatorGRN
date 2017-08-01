@@ -40,10 +40,16 @@ setMethod(
 	f = 'show',
 	signature = 'Node',
 	definition = function(object) {
-		print(paste('Name: ', object@name, sep = ''))
-		print(paste('Time const: ', object@tau, sep = ''))
-		print(paste('RNA max: ', object@rnamax, sep = ''))
-		print(paste('RNA degradation rate: ', object@rnadeg, sep = ''))
+		mxp = 10
+		
+		cat('Name:', object@name, '\n')
+		cat('Time const:', object@tau, '\n')
+		cat('RNA max:', object@rnamax, '\n')
+		cat('RNA degradation rate:', object@rnadeg, '\n')
+		
+		#print edge list
+		edgelist = sapply(object@inedges, function(x) x$name)
+		cat('Incoming edges:', maxPrint(edgelist, mxp), '\n')
 	}
 )
 
@@ -108,7 +114,15 @@ setMethod(
 	f = 'show',
 	signature = 'Edge',
 	definition = function(object) {
-		return(NULL)
+		mxp = 10
+		
+		cat('Name:', object@name, '\n')
+		cat('From:', maxPrint(sapply(object@from, function(x) x$name), mxp), '\n')
+		cat('To:', object@to$name, '\n')
+		cat('Weight:', object@weight, '\n')
+		cat('EC50:', maxPrint(object@EC50, mxp), '\n')
+		cat('Hill constant (n):', maxPrint(object@n, mxp), '\n')
+		cat('Activation:', maxPrint(object@activation, mxp), '\n')
 	}
 )
 
@@ -168,6 +182,24 @@ setMethod(
 	f = 'initialize',
 	signature = 'GraphGRN',
 	definition = initGraphGRN
+)
+
+setMethod(
+	f = 'show',
+	signature = 'GraphGRN',
+	definition = function(object) {
+		mxp = 10
+		nodes = object@nodeset
+		edges = object@edgeset
+		cat('GraphGRN object with', length(nodes), 'nodes and',
+			length(edges), 'edges','\n')
+		nodenames = sapply(nodes[1:min(mxp+1, length(nodes))], 
+						   function(x) x$name)
+		edgenames = sapply(edges[1:min(mxp+1, length(edges))], 
+						   function(x) x$name)
+		cat('Nodes:', maxPrint(nodenames, mxp, length(nodes)), '\n')
+		cat('Edges:', maxPrint(edgenames, mxp), length(edges), '\n')
+	}
 )
 
 #----GraphGRN:addNode----

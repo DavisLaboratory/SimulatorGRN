@@ -65,5 +65,4 @@ nleqslv(exprs,ode,jac=NULL,grn2,ext,jacobian=T)
 
 #----case 4----
 sim1=new('SimulationGRN', graph = grn2, externalInputs = c('A' = 0.5, 'B' = 0.7, 'C' = 0.5))
-solveODE(sim1)
 
