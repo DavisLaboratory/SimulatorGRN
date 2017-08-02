@@ -339,7 +339,7 @@ setReplaceMethod(
 	}
 )
 
-#----GraphGRN:getInputNode----
+#----GraphGRN:getInputNodes----
 setGeneric(
 	name = 'getInputNodes',
 	def = function(graph, nodename) {

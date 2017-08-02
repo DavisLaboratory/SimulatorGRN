@@ -3,6 +3,7 @@ source('GraphGRN.R')
 source('SimulationGRN-methods.R')
 source('SimulationGRN.R')
 library(nleqslv)
+library(distr)
 
 #----case 1----
 n1=new('Node', name='A')
@@ -55,7 +56,7 @@ grn2=addEdge(grn2,'E','I',activation=T)
 grn2=addEdge(grn2,'C','F',activation=T)
 grn2=addEdge(grn2,'F','K',activation=T)
 grn2=addEdge(grn2,c('D','E'),'H',edgetype='and')
-grn2=addEdge(grn2,c('E','F'),'J',edgetype='and',activation=c(F,F))
+grn2=addEdge(grn2,c('E','F'),'J',edgetype='and',activation=c(T,F))
 ode=generateODE(grn2)
 exprs=numeric(9)
 names(exprs)=LETTERS[4:12]
@@ -65,4 +66,24 @@ nleqslv(exprs,ode,jac=NULL,grn2,ext,jacobian=T)
 
 #----case 4----
 sim1=new('SimulationGRN', graph = grn2, externalInputs = c('A' = 0.5, 'B' = 0.7, 'C' = 0.5))
+mix = UnivarMixingDistribution(Norm(0.3, 0.2/3), Norm(0.7, 0.2/3), mixCoeff = c(0.5, 0.5))
+rmix = r(mix)
+
+samp = 500
+ext = data.frame('A' = rmix(samp), 'B' = rnorm(samp, 0.7, 0.2/3), 'C' = rmix(samp))
+ext2 = data.frame('A' = rnorm(samp, 0.5, 0.2/3), 'B' = rnorm(samp, 0.5, 0.2/3), 'C' =rmix(samp))
+ma = foreach(i=1:samp, .combine = rbind, .packages = c('nleqslv')) %do% {
+	e = as.numeric(ext[i, ])
+	names(e) = colnames(ext)
+	sim1$externalInputs = e
+	return(sim1$solution)
+}
+
+hist(ma, breaks = 100)
+ma = as.data.frame(ma)
+p1 = ggplot(ma, aes(E, J, colour = F)) + geom_point() + scale_color_distiller(palette = 'YlOrRd', direction = 1)
+p2 = ggplot(ma, aes(E, H, colour = D)) + geom_point() + scale_color_distiller(palette = 'YlOrRd', direction = 1)
+multiplot(p1, p2, cols = 2)
+
+
 
