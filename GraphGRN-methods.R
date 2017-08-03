@@ -97,49 +97,35 @@ generateRateEqn <- function(object) {
 
 #----Edge: functions----
 validEdge <- function(object) {
-	#RNA maximum in range
+	#weight in range
 	if (any(is.na(object@weight)) | sum(object@weight < 0 | object@weight > 1) > 0) {
 		stop('Interaction weight has to be between 0 and 1')
 	}
-	
-	#RNA degradation in range
+  
+  #from are all of class Node
+  if (!all(sapply(object@from, is, 'Node'))) {
+    stop('All from nodes must be of class \'Node\'')
+  }
+}
+
+validActivationParams <- function(object) {
+	#EC50 in range
 	if (any(is.na(object@EC50)) | sum(object@EC50 < 0 | object@EC50 > 1) > 0) {
 		stop('EC50 has to be between 0 and 1')
 	}
 	
-	#Time constant in range
+	#Hill constant in range
 	if (any(is.na(object@n)) | sum(object@n == 1) > 0) {
 		stop('Hill constant (n) cannot be 1')
-	}
-	
-	#from are all of class Node
-	if (!all(sapply(object@from, is, 'Node'))) {
-		stop('All from nodes must be of class \'Node\'')
 	}
 	
 	return(TRUE)
 }
 
-initEdge <- function(.Object, ..., from, to, weight = 1, EC50 = 0.5, n = 1.39, activation = T) {
-	.Object@from = from
-	.Object@to = to
-	.Object@weight = weight
-	.Object@EC50 = EC50
-	.Object@n = n
-	.Object@activation = activation
-	
-	#generate name
-	name = sapply(from, function(x) x$name)
-	name = paste(name, collapse = '')
-	name = paste(name, to$name, sep = '->')
-	.Object@name = name
-	
-	validObject(.Object)
-	return(.Object)
-}
-
 #----EdgeOr: functions----
 validEdgeOr <- function(object) {
+  validActivationParams(object)
+  
 	#Weight length is 1
 	if (length(object@weight) != 1) {
 		stop('Only 1 parameter for the weight should be provided for OR interactions')
@@ -163,6 +149,24 @@ validEdgeOr <- function(object) {
 	return(TRUE)
 }
 
+initEdgeOr <- function(.Object, ..., from, to, weight = 1, EC50 = 0.5, n = 1.39, activation = T) {
+  .Object@from = from
+  .Object@to = to
+  .Object@weight = weight
+  .Object@EC50 = EC50
+  .Object@n = n
+  .Object@activation = activation
+  
+  #generate name
+  name = sapply(from, function(x) x$name)
+  name = paste(name, collapse = '')
+  name = paste(name, to$name, sep = '->')
+  .Object@name = name
+  
+  validObject(.Object)
+  return(.Object)
+}
+
 generateActivationEqnOr <- function(object) {
 	e = object
 	#generate activation eqn
@@ -177,6 +181,7 @@ generateActivationEqnOr <- function(object) {
 
 #----EdgeAnd: functions----
 validEdgeAnd <- function(object) {
+  validActivationParams(object)
 	numint = length(object@from) #number of interactors
 	
 	#number of inputs
@@ -216,7 +221,19 @@ initEdgeAnd <- function(.Object, ..., from, to, weight = 1, EC50 = c(), n = c(),
 	if (length(activation) == 0)
 		activation = rep(T, numint)
 	
-	.Object = callNextMethod(.Object = .Object, from = from, to = to, weight = weight, EC50 = EC50, n = n, activation = activation)
+	.Object@from = from
+	.Object@to = to
+	.Object@weight = weight
+	.Object@EC50 = EC50
+	.Object@n = n
+	.Object@activation = activation
+	
+	#generate name
+	name = sapply(from, function(x) x$name)
+	name = paste(name, collapse = '')
+	name = paste(name, to$name, sep = '->')
+	.Object@name = name
+	
 	validObject(.Object)
 	return(.Object)
 }

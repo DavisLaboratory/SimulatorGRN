@@ -96,20 +96,11 @@ setClass(
 		from = 'list',
 		to = 'Node',
 		weight = 'numeric',
-		EC50 = 'numeric',
-		n = 'numeric',
-		activation = 'logical',
 		name = 'character'
 	)
 )
 
 setValidity('Edge', validEdge)
-
-setMethod(
-	f = 'initialize',
-	signature = 'Edge',
-	definition = initEdge
-)
 
 setMethod(
 	f = '$',
@@ -144,9 +135,6 @@ setMethod(
 		cat('From:', maxPrint(sapply(object@from, function(x) x$name), mxp), '\n')
 		cat('To:', object@to$name, '\n')
 		cat('Weight:', object@weight, '\n')
-		cat('EC50:', maxPrint(object@EC50, mxp), '\n')
-		cat('Hill constant (n):', maxPrint(object@n, mxp), '\n')
-		cat('Activation:', maxPrint(object@activation, mxp), '\n')
 	}
 )
 
@@ -160,10 +148,21 @@ setGeneric(
 #----EdgeOr----
 setClass(
 	Class = 'EdgeOr',
-	contains = 'Edge'
+	contains = 'Edge',
+	slots = list(
+	  EC50 = 'numeric',
+	  n = 'numeric',
+	  activation = 'logical'
+	)
 )
 
 setValidity('EdgeOr', validEdgeOr)
+
+setMethod(
+  f = 'initialize',
+  signature = 'EdgeOr',
+  definition = initEdgeOr
+)
 
 setMethod(
 	f = 'generateActivationEqn',
@@ -171,10 +170,27 @@ setMethod(
 	definition = generateActivationEqnOr
 )
 
+setMethod(
+  f = 'show',
+  signature = 'EdgeOr',
+  definition = function(object) {
+    mxp = 10
+    
+    callNextMethod()
+    cat('EC50:', maxPrint(object@EC50, mxp), '\n')
+    cat('Hill constant (n):', maxPrint(object@n, mxp), '\n')
+    cat('Activation:', maxPrint(object@activation, mxp), '\n')  }
+)
+
 #----EdgeAnd----
 setClass(
 	Class = 'EdgeAnd',
-	contains = 'Edge'
+	contains = 'Edge',
+	slots = list(
+	  EC50 = 'numeric',
+	  n = 'numeric',
+	  activation = 'logical'
+	)
 )
 
 setValidity('EdgeAnd', validEdgeAnd)
@@ -189,6 +205,18 @@ setMethod(
 	f = 'generateActivationEqn',
 	signature = 'EdgeAnd',
 	definition = generateActivationEqnAnd
+)
+
+setMethod(
+  f = 'show',
+  signature = 'EdgeAnd',
+  definition = function(object) {
+    mxp = 10
+    
+    callNextMethod()
+    cat('EC50:', maxPrint(object@EC50, mxp), '\n')
+    cat('Hill constant (n):', maxPrint(object@n, mxp), '\n')
+    cat('Activation:', maxPrint(object@activation, mxp), '\n')  }
 )
 
 #----GraphGRN----
