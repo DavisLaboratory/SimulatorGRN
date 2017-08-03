@@ -4,6 +4,10 @@ source('SimulationGRN-methods.R')
 source('SimulationGRN.R')
 library(nleqslv)
 library(distr)
+library(foreach)
+library(ggplot2)
+library(grid)
+
 
 #----case 1----
 n1=new('Node', name='A')

@@ -1,18 +1,13 @@
 #----Node: functions----
 validNode <- function(object) {
 	#RNA maximum in range
-	if (!is.na(object@rnamax) & (object@rnamax < 0 | object@rnamax > 1)) {
+	if (!is.na(object@spmax) & (object@spmax < 0 | object@spmax > 1)) {
 		stop('RNA maximum expression has to be between 0 and 1')
 	}
 	
 	#RNA degradation in range
-	if (!is.na(object@rnadeg) & (object@rnadeg < 0 | object@rnadeg > 1)) {
+	if (!is.na(object@spdeg) & (object@spdeg < 0 | object@spdeg > 1)) {
 		stop('RNA degradation rate has to be between 0 and 1')
-	}
-	
-	#Time constant in range
-	if (!is.na(object@tau) & (object@tau <= 0)) {
-		stop('Time constant must be positive')
 	}
 	
 	#Incoming edges
@@ -41,12 +36,29 @@ validNode <- function(object) {
 	return(TRUE)
 }
 
-initNode <- function(.Object, ..., name, rnamax = 1, rnadeg = 1, tau = 1, inedges = list()) {
+initNode <- function(.Object, ..., name = '', spmax = 1, spdeg = 1, inedges = list()) {
 	.Object@name = name
-	.Object@rnamax = rnamax
-	.Object@rnadeg = rnadeg
-	.Object@tau = tau
+	.Object@spmax = spmax
+	.Object@spdeg = spdeg
 	.Object@inedges = inedges
+	
+	validObject(.Object)
+	return(.Object)
+}
+
+#----NodeRNA: functions----
+validNodeRNA <- function(object){
+	#Time constant in range
+	if (!is.na(object@tau) & (object@tau <= 0)) {
+		stop('Time constant must be positive')
+	}
+	
+	return(TRUE)
+}
+
+initNodeRNA <- function(.Object, ..., tau = 1) {
+	.Object@tau = tau
+	.Object = callNextMethod()
 	
 	validObject(.Object)
 	return(.Object)
@@ -77,8 +89,8 @@ generateRateEqn <- function(object) {
 	
 	#generate rate equation
 	rateEqn = paste('(', act, ')', sep = '')
-	rateEqn = paste(rateEqn, object@rnamax, sep = ' * ')
-	degradationEqn = paste(object@rnadeg, object@name, sep = ' * ')
+	rateEqn = paste(rateEqn, object@spmax, sep = ' * ')
+	degradationEqn = paste(object@spdeg, object@name, sep = ' * ')
 	rateEqn = paste(rateEqn, degradationEqn, sep = ' - ')
 	return(rateEqn)
 }

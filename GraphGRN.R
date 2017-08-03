@@ -3,13 +3,11 @@ setClass(
 	Class = 'Node',
 	slots = list(
 		name = 'character',
-		tau = 'numeric',
-		rnamax = 'numeric',
-		rnadeg = 'numeric',
+		spmax = 'numeric',
+		spdeg = 'numeric',
 		inedges = 'list'
 	)
 )
-
 setValidity('Node', validNode)
 
 setMethod(
@@ -37,19 +35,44 @@ setMethod(
 )
 
 setMethod(
+  f = 'show',
+  signature = 'Node',
+  definition = function(object) {
+    mxp = 10
+    
+    cat(paste0('***', class(object), '***'), '\n')
+    cat('Name:', object@name, '\n')
+    cat('RNA max:', object@spmax, '\n')
+    cat('RNA degradation rate:', object@spdeg, '\n')
+    
+    #print edge list
+    edgelist = sapply(object@inedges, function(x) x$name)
+    cat('Incoming edges:', maxPrint(edgelist, mxp), '\n')
+  }
+)
+
+#----NodeRNA----
+setClass(
+	Class = 'NodeRNA',
+	contains = 'Node',
+	slots = list(
+		tau = 'numeric'
+	)
+)
+setValidity('NodeRNA', validNodeRNA)
+
+setMethod(
+	f = 'initialize',
+	signature = 'NodeRNA',
+	definition = initNodeRNA
+)
+
+setMethod(
 	f = 'show',
-	signature = 'Node',
+	signature = 'NodeRNA',
 	definition = function(object) {
-		mxp = 10
-		
-		cat('Name:', object@name, '\n')
+	  callNextMethod()
 		cat('Time const:', object@tau, '\n')
-		cat('RNA max:', object@rnamax, '\n')
-		cat('RNA degradation rate:', object@rnadeg, '\n')
-		
-		#print edge list
-		edgelist = sapply(object@inedges, function(x) x$name)
-		cat('Incoming edges:', maxPrint(edgelist, mxp), '\n')
 	}
 )
 
@@ -62,7 +85,7 @@ setGeneric(
 
 setMethod(
 	f = 'generateEqn',
-	signature = 'Node',
+	signature = 'NodeRNA',
 	definition = generateRateEqn
 )
 
@@ -116,6 +139,7 @@ setMethod(
 	definition = function(object) {
 		mxp = 10
 		
+		cat(paste0('***', class(object), '***'), '\n')
 		cat('Name:', object@name, '\n')
 		cat('From:', maxPrint(sapply(object@from, function(x) x$name), mxp), '\n')
 		cat('To:', object@to$name, '\n')
@@ -205,16 +229,21 @@ setMethod(
 #----GraphGRN:addNode----
 setGeneric(
 	name = 'addNode',
-	def = function(graph, node, tau, rnamax, rnadeg, inedges) {
+	def = function(graph, node, tau, spmax, spdeg, inedges) {
 		standardGeneric('addNode')
 	}
 )
 
 setMethod(
 	f = 'addNode',
-	signature = c('GraphGRN', 'Node', 'missing', 'missing', 'missing', 'missing'),
-	definition = function(graph, node, tau, rnamax, rnadeg, inedges) {
+	signature = c('GraphGRN', 'NodeRNA', 'missing', 'missing', 'missing', 'missing'),
+	definition = function(graph, node, tau, spmax, spdeg, inedges) {
 		graph@nodeset = c(graph@nodeset, node)
+		
+		#node name is not empty
+		if (node$name %in% '') {
+			stop('Node name cannot be empty')
+		}
 		
 		#named entry to graph structure
 		names(graph@nodeset)[length(graph@nodeset)] = node$name
@@ -226,17 +255,17 @@ setMethod(
 setMethod(
 	f = 'addNode',
 	signature = c('GraphGRN', 'character', 'ANY', 'ANY', 'ANY', 'missing'),
-	definition = function(graph, node, tau, rnamax, rnadeg, inedges) {
+	definition = function(graph, node, tau, spmax, spdeg, inedges) {
 		#create default node
-		nodeObj = new('Node', name = node)
+		nodeObj = new('NodeRNA', name = node)
 		
 		#modify default node with provided parameters
 		if(!missing(tau))
 			edgeObj$tau = tau
-		if(!missing(rnamax))
-			edgeObj$rnamax = rnamax
-		if(!missing(rnadeg))
-			edgeObj$rnadeg = rnadeg
+		if(!missing(spmax))
+			edgeObj$spmax = spmax
+		if(!missing(spdeg))
+			edgeObj$spdeg = spdeg
 		
 		graph = addNode(graph, nodeObj)
 		
