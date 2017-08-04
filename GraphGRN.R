@@ -249,8 +249,16 @@ setMethod(
 						   function(x) x$name)
 		edgenames = sapply(edges[1:min(mxp+1, length(edges))], 
 						   function(x) x$name)
-		cat('Nodes:', maxPrint(nodenames, mxp, length(nodes)), '\n')
-		cat('Edges:', maxPrint(edgenames, mxp), length(edges), '\n')
+		if (length(nodes) == 0) {
+		  cat('Nodes: (0)', '\n')
+		} else{
+		  cat('Nodes:', maxPrint(nodenames, mxp, length(nodes)), '\n')
+		}
+		if (length(edges) == 0) {
+		  cat('Edges: (0)', '\n')
+		} else{
+		  cat('Edges:', maxPrint(edgenames, mxp, length(edges)), '\n')
+		}
 	}
 )
 
@@ -288,11 +296,11 @@ setMethod(
 		nodeObj = new('NodeRNA', name = node)
 		
 		#modify default node with provided parameters
-		if(!missing(tau))
+		if(!missing(tau) && !is.null(tau))
 			edgeObj$tau = tau
-		if(!missing(spmax))
+		if(!missing(spmax) && !is.null(spmax))
 			edgeObj$spmax = spmax
-		if(!missing(spdeg))
+		if(!missing(spdeg) && !is.null(spdeg))
 			edgeObj$spdeg = spdeg
 		
 		graph = addNode(graph, nodeObj)
@@ -331,13 +339,13 @@ setMethod(
 		#create default edge
 		edgeObj = new(edgeclass, from = c(fromnode), to = tonode)
 		#modify default edge with provided parameters
-		if(!missing(activation))
+		if(!missing(activation) && !is.null(activation))
 			edgeObj$activation = activation
-		if(!missing(weight))
+		if(!missing(weight) && !is.null(weight))
 			edgeObj$weight = weight
-		if(!missing(EC50))
+		if(!missing(EC50) && !is.null(EC50))
 			edgeObj$EC50 = EC50
-		if(!missing(n))
+		if(!missing(n) && !is.null(n))
 			edgeObj$n = n
 		
 		#add edge to graph
@@ -399,7 +407,7 @@ setReplaceMethod(
 #----GraphGRN:getInputNodes----
 setGeneric(
 	name = 'getInputNodes',
-	def = function(graph, nodename) {
+	def = function(graph) {
 		standardGeneric('getInputNodes')
 	}
 )
@@ -500,7 +508,7 @@ setMethod(
 	f = 'generateODE',
 	signature = c('GraphGRN'),
 	definition = function(graph) {
-		fn = 'function(exprs, graph, externalInputs) {'
+		fn = 'function(exprs, externalInputs, graph) {'
 		
 		#define the activation function
 		fn = paste(fn, '\tfAct <- function(TF, EC50 = 0.5, n = 1.39) {', sep = '\n')
@@ -535,5 +543,7 @@ setMethod(
 		return(eval(parse(text = fn)))
 	}
 )
+
+#----GraphGRN: sample----
 
 

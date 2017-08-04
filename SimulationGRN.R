@@ -7,7 +7,7 @@ setClass(
 		noiseL = 'numeric',
 		noiseG = 'numeric',
 		seed = 'numeric',
-		solution = 'numeric'
+		solution = 'list'
 	)
 )
 
@@ -32,7 +32,7 @@ setMethod(
 		
 		#external inputs and solution print
 		ext = round(object@externalInputs, digits = 2)
-		soln = round(object@solution, digits = 2)
+		soln = round(object$solution, digits = 2)
 		if (length(ext) > mxp){
 			ext = ext[1:mxp]
 			ext = c(ext, '...' = paste0('...'))
@@ -44,7 +44,7 @@ setMethod(
 		
 		cat(paste0('External Inputs (', length(object@externalInputs),' nodes):'), '\n')
 		print(ext, quote = F)
-		cat(paste0('Solution (', length(object@solution),' nodes):'), '\n')
+		cat(paste0('Solution (', length(object$solution),' nodes):'), '\n')
 		print(soln, quote = F)
 	}
 )
@@ -53,7 +53,16 @@ setMethod(
 	f = '$',
 	signature = 'SimulationGRN',
 	definition = function(x, name) {
-		return(slot(x, name))
+	  value = slot(x, name)
+	  
+	  if (name %in% 'solution'){
+	    soln = x@solution
+	    soln = c(soln$x, x@externalInputs)
+	    soln = soln[order(names(soln))]
+	    value = soln
+	  }
+	  
+		return(value)
 	}
 )
 

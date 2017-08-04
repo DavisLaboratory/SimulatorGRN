@@ -315,6 +315,38 @@ getEdgeClass<-function(edgetype){
 	return(edgeclass)
 }
 
+#----GraphGRN: Conversion functions----
+dfToGraphGRN <- function(edges, nodes) {
+  if(missing(nodes) || is.null(nodes)){
+    nodes = data.frame('node' = unique(c(edges[ , 1], edges[ , 3])), stringsAsFactors = F)
+  }
+  
+  #names for the main columns should be consistent
+  colnames(edges)[1:3] = c('from', 'activation', 'to')
+  colnames(nodes)[1] = c('node')
+  
+  #missing interaction type
+  if (!'type' %in% colnames(edges)) {
+    edges['type'] = 'or'
+  }
+  
+  #create graph object
+  grn = new('GraphGRN')
+  #add nodes
+  for (i in 1:nrow(nodes)){
+    n = nodes[i, , drop = F]
+    grn = addNode(grn, n$node, n$tau, n$max, n$deg)
+  }
+  
+  #add edges
+  for (i in 1:nrow(edges)){
+    e = edges[i, , drop = F]
+    grn = addEdge(grn, e$from, e$to, e$type, e$activation, e$weight, e$EC50, e$n)
+  }
+  
+  return(grn)
+}
+
 #----All classes----
 maxPrint <- function(charvec, maxprint = 10, len = NULL) {
 	if(is.null(len)){

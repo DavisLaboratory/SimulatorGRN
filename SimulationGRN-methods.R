@@ -47,12 +47,10 @@ solveSteadyState <- function(object) {
 	ext = object@externalInputs
 	graph = object@graph
 	nodes = setdiff(nodenames(graph), names(ext))
-	exprs = numeric(length(nodes))
+	exprs = runif(length(nodes))
 	names(exprs) = nodes
 	
-	soln = nleqslv(exprs, ode, jac = NULL, graph, ext)
-	soln = c(soln$x, object@externalInputs)
-	soln = soln[order(names(soln))]
+	soln = nleqslv(exprs, ode, jac = NULL, ext, graph)
 	return(soln)
 }
 
