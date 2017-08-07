@@ -508,7 +508,7 @@ setMethod(
 	f = 'generateODE',
 	signature = c('GraphGRN'),
 	definition = function(graph) {
-		fn = 'function(exprs, externalInputs, graph) {'
+		fn = 'function(exprs, externalInputs) {'
 		
 		#define the activation function
 		fn = paste(fn, '\tfAct <- function(TF, EC50 = 0.5, n = 1.39) {', sep = '\n')

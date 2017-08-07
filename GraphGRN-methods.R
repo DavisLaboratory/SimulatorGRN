@@ -81,10 +81,15 @@ generateRateEqn <- function(object) {
 		combEqns = character(0)
 		for (i in 2:nEq) {
 			combs = combn(actEqns, i)
-			combEqns = c(combEqns, apply(combs, 2, paste, collapse = ' * '))
+			combEqn = apply(combs, 2, paste, collapse = ' * ')
+			
+			sgn = ' - '
+			if (i %% 2 != 0){
+			  sgn = ' + '
+			}
+			
+			act = paste(c(act, combEqn), collapse = sgn)
 		}
-		
-		act = paste(c(act, combEqns), collapse = ' - ')
 	}
 	
 	#generate rate equation
