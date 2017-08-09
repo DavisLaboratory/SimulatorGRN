@@ -5,7 +5,8 @@ setClass(
 		name = 'character',
 		spmax = 'numeric',
 		spdeg = 'numeric',
-		inedges = 'list'
+		inedges = 'list',
+		outedges = 'list'
 	)
 )
 setValidity('Node', validNode)
@@ -48,6 +49,8 @@ setMethod(
     #print edge list
     edgelist = sapply(object@inedges, function(x) x$name)
     cat('Incoming edges:', maxPrint(edgelist, mxp), '\n')
+    edgelist = sapply(object@outedges, function(x) x$name)
+    cat('Outgoing edges:', maxPrint(edgelist, mxp), '\n')
   }
 )
 
@@ -265,15 +268,15 @@ setMethod(
 #----GraphGRN:addNode----
 setGeneric(
 	name = 'addNode',
-	def = function(graph, node, tau, spmax, spdeg, inedges) {
+	def = function(graph, node, tau, spmax, spdeg, inedges, outedges) {
 		standardGeneric('addNode')
 	}
 )
 
 setMethod(
 	f = 'addNode',
-	signature = c('GraphGRN', 'NodeRNA', 'missing', 'missing', 'missing', 'missing'),
-	definition = function(graph, node, tau, spmax, spdeg, inedges) {
+	signature = c('GraphGRN', 'NodeRNA', 'missing', 'missing', 'missing', 'missing', 'missing'),
+	definition = function(graph, node, tau, spmax, spdeg, inedges, outedges) {
 		graph@nodeset = c(graph@nodeset, node)
 		
 		#node name is not empty
@@ -290,8 +293,8 @@ setMethod(
 
 setMethod(
 	f = 'addNode',
-	signature = c('GraphGRN', 'character', 'ANY', 'ANY', 'ANY', 'missing'),
-	definition = function(graph, node, tau, spmax, spdeg, inedges) {
+	signature = c('GraphGRN', 'character', 'ANY', 'ANY', 'ANY', 'missing', 'missing'),
+	definition = function(graph, node, tau, spmax, spdeg, inedges, outedges) {
 		#create default node
 		nodeObj = new('NodeRNA', name = node)
 		
@@ -312,7 +315,7 @@ setMethod(
 #----GraphGRN:removeNode----
 setGeneric(
   name = 'removeNode',
-  def = function(graph, node) {
+  def = function(graph, nodename) {
     standardGeneric('removeNode')
   }
 )
@@ -320,17 +323,67 @@ setGeneric(
 setMethod(
   f = 'removeNode',
   signature = c('GraphGRN', 'character'),
-  definition = function(graph, node) {
+  definition = function(graph, nodename) {
     #ensure or edges exist and are compatible to merge (i.e. same to node)
-    if (length(to) > 1)
+    if (length(nodename) > 1)
       stop('Multiple nodes provided, expected 1')
     
-    if (!node %in% names(graph(nodeset))) {
+    if (!nodename %in% names(graph@nodeset)) {
       stop('Node not found')
     }
     
+    #retrieve node
+    node = getNode(graph, nodename)
+    
+    #remove from inedges of targets
+    edges = node$inedges
+    for (e in edges) {
+      from = sapply(e$from, function(n) n$name)
+      graph = removeEdge(graph, from, e$to$name) #remove edge
+    }
+    
+    #remove from inedges of targets
+    edges = node$outedges
+    for (e in edges) {
+      from = sapply(e$from, function(n) n$name)
+      graph = removeEdge(graph, from, e$to$name) #remove edge
+      
+      if (is(e, 'EdgeAnd')) {
+        newfrom = !from %in% node$name
+        
+        if (sum(newfrom) > 1) {
+          #create a new AND node without the current node
+          graph = addEdge(
+            graph,
+            edgetype = 'and',
+            from = sapply(e$from[newfrom], function(n) n$name),
+            to = e$to$name,
+            activation = e$activation[newfrom],
+            weight = e$weight,
+            EC50 = e$EC50[newfrom],
+            n = e$n[newfrom]
+          )
+        } else{
+          #create a new OR node without the current node
+          graph = addEdge(
+            graph,
+            edgetype = 'or',
+            from = sapply(e$from[newfrom], function(n) n$name),
+            to = e$to$name,
+            activation = e$activation[newfrom],
+            weight = e$weight,
+            EC50 = e$EC50[newfrom],
+            n = e$n[newfrom]
+          )
+        }
+      }
+    }
+    
+    #remove node from nodeset
+    graph@nodeset = graph@nodeset[!names(graph@nodeset) %in% node$name]
+    
     #if edge exists, remove it from nodeset and from inedges
-    graph = getSubGraph(graph, setdiff(names(graph(nodeset)), node))
+    # graph = getSubGraph(graph, setdiff(names(graph(nodeset)), node))
     
     return(graph)
   }
@@ -379,6 +432,12 @@ setMethod(
 		tonode$inedges = c(tonode$inedges, edgeObj)
 		graph@nodeset[[tonode$name]] = tonode
 		
+		#update node outedges information
+		for (f in fromnode) {
+		  f$outedges = c(f$outedges, edgeObj)
+		  graph@nodeset[[f$name]] = f
+		}
+		
 		#named entry to graph structure
 		names(graph@edgeset)[length(graph@edgeset)] = edgeObj$name
 		validObject(graph)
@@ -404,15 +463,22 @@ setMethod(
       stop('Multiple to nodes provided, expected 1')
     
     edge = getEdge(graph, from, to)
-    if (is.null(andedge)) {
+    if (is.null(edge)) {
       stop('Edge not found')
     }
     
-    #if edge exists, remove it from nodeset and from inedges
+    #if edge exists, remove it from nodeset, from inedges
     graph@edgeset = graph@edgeset[!names(graph@edgeset) %in% edge$name]
     toNode = getNode(graph, to)
     toNode$inedges = toNode$inedges[!sapply(toNode$inedges, function (x) x$name) %in% edge$name]
     getNode(graph, to) = toNode
+    
+    #remove from outedges of from nodes
+    for (f in from) {
+      fromNode = getNode(graph, f)
+      fromNode$outedges = fromNode$outedges[!sapply(fromNode$outedges, function (x) x$name) %in% edge$name]
+      getNode(graph, f) = fromNode
+    }
     
     return(graph)
   }

@@ -15,6 +15,11 @@ validNode <- function(object) {
 		stop('All inedges must be valid Edge objects')
 	}
 	
+	#Outgoing edges
+	if (!all(sapply(object@outedges, is, 'Edge'))) {
+		stop('All outedges must be valid Edge objects')
+	}
+	
 	#Incoming edges: check that all edges have to as this node
 	testin = sapply(object@inedges, function(x) {
 		return(identical(x$to$name, object$name))
@@ -24,7 +29,16 @@ validNode <- function(object) {
 		stop('All interactions must have the \'to\' node as the current node')
 	}
 	
-	#check that all regulators are unique
+	#Outgoing edges: check that all edges have this node as part of from
+	testout = sapply(object@outedges, function(x) {
+		return(object$name %in% sapply(x$from, function (n) n$name))
+	})
+	
+	if (!all(testout)) {
+		stop('All interactions must have the current node as part of \'from\'')
+	}
+	
+	#Incoming edges: check that all regulators are unique
 	regnames = sapply(object@inedges, function(x) {
 		sapply(x$from, slot, 'name')
 	})
@@ -33,14 +47,22 @@ validNode <- function(object) {
 		stop('All regulators must be unique')
 	}
 	
+	#outgoing edges: check that all targets are unique
+	tgtnames = sapply(object@outedges, function(x) x$to$name)
+	tgtnames = as.vector(tgtnames)
+	if (length(unique(tgtnames)) < length(tgtnames)) {
+		stop('All targets must be unique')
+	}
+	
 	return(TRUE)
 }
 
-initNode <- function(.Object, ..., name = '', spmax = 1, spdeg = 1, inedges = list()) {
+initNode <- function(.Object, ..., name = '', spmax = 1, spdeg = 1, inedges = list(), outedges = list()) {
 	.Object@name = name
 	.Object@spmax = spmax
 	.Object@spdeg = spdeg
 	.Object@inedges = inedges
+	.Object@outedges = outedges
 	
 	validObject(.Object)
 	return(.Object)
