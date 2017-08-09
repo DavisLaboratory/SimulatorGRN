@@ -502,6 +502,22 @@ setMethod(
   }
 )
 
+#----GraphGRN:splitAnd----
+setGeneric(
+  name = 'splitAnd',
+  def = function(graph, from, to) {
+    standardGeneric('splitAnd')
+  }
+)
+
+setMethod(
+  f = 'splitAnd',
+  signature = c('GraphGRN', 'character', 'character'),
+  definition = function(graph, from, to) {
+    andToOr(graph, from, to)
+  }
+)
+
 #----GraphGRN:getEdge----
 setGeneric(
 	name = 'getEdge',

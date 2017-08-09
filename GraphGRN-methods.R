@@ -411,13 +411,10 @@ orToAnd <- function(graph, from, to, weight) {
   }
   
   oredges = graph@edgeset[edgenames]
-  #remove OR edges from nodeset
-  graph@edgeset = graph@edgeset[!names(graph@edgeset) %in% edgenames]
-  
-  #remove OR from inedges
-  toNode = getNode(graph, to)
-  toNode$inedges = toNode$inedges[!sapply(toNode$inedges, function (x) x$name) %in% edgenames]
-  getNode(graph, to) = toNode
+  #remove OR edges from graph
+  for (e in oredges) {
+    graph = removeEdge(graph, sapply(e$from, function (x) x$name), e$to$name)
+  }
   
   #add AND edge
   graph = addEdge(
@@ -434,126 +431,44 @@ orToAnd <- function(graph, from, to, weight) {
   return(graph)
 }
 
-# andToOr <- function(graph, from, to) {
-#   #ensure or edges exist and are compatible to merge (i.e. same to node)
-#   if (length(to) > 1)
-#     stop('Multiple to nodes provided, expected 1')
-#   
-#   if (length(from) < 2)
-#     stop('Need 2 or more edges to define an AND edge')
-#   
-#   andedge = getEdge(graph, from, to)
-#   if (is.null(andedge)) {
-#     stop('Edge not found')
-#   }
-#   
-#   #remove AND edge
-#   
-#   
-#   #create OR edges
-#   for (f in from){
-#     oredge = new(
-#       'EdgeOr',
-#       from = sapply(oredges, function(e) e$from),
-#       to = oredges[[1]]$to,
-#       activation = as.logical(sapply(oredges, function(e) e$activation)),
-#       weight = weight,
-#       EC50 = as.numeric(sapply(oredges, function(e) e$EC50)),
-#       n = as.numeric(sapply(oredges, function(e) e$n))
-#     )
-#   }
-#   
-#   #create AND edge
-#   oredges = graph@edgeset[edgenames]
-#   andedge = new(
-#     'EdgeAnd',
-#     from = sapply(oredges, function(e) e$from),
-#     to = oredges[[1]]$to,
-#     activation = as.logical(sapply(oredges, function(e) e$activation)),
-#     weight = weight,
-#     EC50 = as.numeric(sapply(oredges, function(e) e$EC50)),
-#     n = as.numeric(sapply(oredges, function(e) e$n))
-#   )
-#   
-#   #remove OR edge and add AND edge
-#   graph@edgeset = graph@edgeset[!names(graph@edgeset) %in% edgenames]
-#   graph@edgeset = c(graph@edgeset, andedge)
-#   names(graph@edgeset)[length(graph@edgeset)] = andedge$name
-#   
-#   #remove OR edges and add AND edge to inedges
-#   toNode = getNode(graph, to)
-#   toNode$inedges = toNode$inedges[!sapply(toNode$inedges, function (x) x$name) %in% edgenames]
-#   toNode$inedges = c(toNode$inedges, andedge)
-#   getNode(graph, to) = toNode
-#   
-#   return(graph)
-# }
+andToOr <- function(graph, from, to) {
+  #ensure or edges exist and are compatible to merge (i.e. same to node)
+  if (length(to) > 1)
+    stop('Multiple to nodes provided, expected 1')
+
+  if (length(from) < 2)
+    stop('Need 2 or more edges to define an AND edge')
+
+  andedge = getEdge(graph, from, to)
+  if (is.null(andedge)) {
+    stop('Edge not found')
+  }
+
+  #remove AND edge
+  graph = removeEdge(graph, andedge)
+
+  #add OR edges
+  for (i in 1:length(andedge$from)){
+    graph = addEdge(
+      graph,
+      edgetype = 'or',
+      from = andedge$from[[i]]$name,
+      to = andedge$to$name,
+      activation = andedge$activation[i],
+      weight = andedge$weight,
+      EC50 = andedge$EC50[i],
+      n = andedge$n[i]
+    )
+  }
+
+  return(graph)
+}
 
 subsetGraph <- function(graph, snodes) {
-  nodes = graph@nodeset
-  edges = graph@edgeset
-  newnodes = nodes[snodes]
-  
-  #Deal with missing nodes in AND edges
-  andedges = edges[sapply(edges, is, 'EdgeAnd')]
-  
-  for(e in andedges) {
-    from = sapply(e$from, function(x) x$name)
-    from = from %in% names(newnodes)
-    
-    if (sum(from) == 1) {
-      #ONE from node exists
-      #convert to OR node
-      oredge = new(
-        'EdgeOr',
-        from = c(e$from[from]),
-        to = e$to,
-        activation = e$activation[from],
-        weight = e$weight,
-        EC50 = e$EC50[from],
-        n = e$n[from]
-      )
-      #add to edge list
-      edges = c(edges, oredge)
-      names(edges)[length(edges)] = oredge$name
-      #add to inedges list for relevant node
-      nodes[[oredge$to$name]]$inedges = c(nodes[[oredge$to$name]]$inedges, oredge)
-    }else if (sum(from) > 1) {
-      #SOME from nodes exist
-      #create a new AND edge with remaining nodes
-      andedge = new(
-        'EdgeAnd',
-        from = c(e$from[from]),
-        to = e$to,
-        activation = e$activation[from],
-        weight = e$weight,
-        EC50 = e$EC50[from],
-        n = e$n[from]
-      )
-      #add to edge list
-      edges = c(edges, andedge)
-      names(edges)[length(edges)] = andedge$name
-      #add to inedges list for relevant node
-      newnodes[[andedge$to$name]]$inedges = c(newnodes[[andedge$to$name]]$inedges, andedge)
-    }
+  #remove non-existing nodes from the graph
+  for (n in setdiff(names(graph@nodeset), snodes)) {
+    graph = removeNode(graph, n)
   }
-  
-  #subset edges
-  #OR edges
-  edges = edges[sapply(edges, function(x) {
-    exists = x$to$name %in% names(newnodes)
-    exists = exists & all(sapply(x$from, function(y) y$name) %in% names(newnodes))
-  })]
-  #remove additional edges from node data
-  nodes = list()
-  for (n in newnodes) {
-    n$inedges = n$inedges[sapply(n$inedges, function(x) x$name) %in% names(edges)]
-    nodes = c(nodes, n)
-  }
-  names(nodes) = sapply(nodes, function(x) x$name)
-  
-  graph@nodeset = nodes
-  graph@edgeset = edges
   return(graph)
 }
 
