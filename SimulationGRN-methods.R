@@ -24,7 +24,7 @@ validSimulationGRN <- function(object) {
 	return(TRUE)
 }
 
-initSimulationGRN <- function(.Object, ..., graph, externalInputs, noiseL = 0, noiseG = 0, seed = sample.int(1e12,1)) {
+initSimulationGRN <- function(.Object, ..., graph, externalInputs, noiseL = 0, noiseG = 0, seed = sample.int(1e6,1)) {
 	if(missing(externalInputs)){
 		inputNodes = getInputNodes(graph)
 		externalInputs = numeric(length(inputNodes)) + 0.5
@@ -43,6 +43,10 @@ initSimulationGRN <- function(.Object, ..., graph, externalInputs, noiseL = 0, n
 }
 
 solveSteadyState <- function(object) {
+  #set random seed
+  set.seed(object@seed)
+  
+  #solve ODE
 	ode = generateODE(object@graph)
 	ext = object@externalInputs
 	graph = object@graph
@@ -50,7 +54,14 @@ solveSteadyState <- function(object) {
 	exprs = runif(length(nodes))
 	names(exprs) = nodes
 	
-	soln = nleqslv(exprs, ode, jac = NULL, ext, graph)
+	soln = nleqslv(exprs, ode, jac = NULL, ext)
+	
+	#check if convergence is reached or not
+	if(soln$termcd != 1) {
+	  warning('Solution not achieved. use \'diagnostics(simulation)\' to get details')
+	}
 	return(soln)
 }
+
+
 

@@ -260,7 +260,7 @@ generateActivationEqnAnd <- function(object) {
 	return(act)
 }
 
-#----GraphGRN: functions----
+#----GraphGRN: core functions----
 validGraphGRN <- function(object) {
 	#nodeset are all of class Node
 	if (!all(sapply(object@nodeset, is, 'Node'))) {
@@ -294,6 +294,61 @@ initGraphGRN <- function(.Object, ..., nodeset = list(), edgeset = list()) {
 	return(.Object)
 }
 
+removeMissing <- function(graph) {
+  #remove nodes with no interactions
+  intnodes = sapply(graph@edgeset, function (e) sapply(e$from, function(n) n$name))
+  intnodes = c(intnodes, sapply(graph@edgeset, function (e) e$to$name))
+  intnodes = unique(intnodes)
+  
+  #warning and remove
+  nonintnodes = setdiff(names(graph@nodeset), intnodes)
+  if (length(nonintnodes) != 0) {
+    msg = paste0('Nodes without interactions removed: ', paste(nonintnodes, collapse = ', '))
+    warning(msg)
+    
+    graph@nodeset = graph@nodeset[intnodes]
+  }
+  return(graph)
+}
+
+#----GraphGRN: specific functions----
+getODEFunc <- function(graph) {
+  graph = removeMissing(graph)
+  fn = 'function(exprs, externalInputs) {'
+  
+  #define the activation function
+  fn = paste(fn, '\tfAct <- function(TF, EC50 = 0.5, n = 1.39) {', sep = '\n')
+  fn = paste(fn, '\t\tB = (EC50 ^ n - 1) / (2 * EC50 ^ n - 1)', sep = '\n')
+  fn = paste(fn, '\t\tK_n = (B - 1)', sep = '\n')
+  fn = paste(fn, '\t\tact = B * TF ^ n / (K_n + TF ^ n)', sep = '\n')
+  fn = paste(fn, '\t\t', sep = '\n')
+  fn = paste(fn, '\t\treturn(act)', sep = '\n')
+  fn = paste(fn, '\t}', sep = '\n')
+  fn = paste(fn, '\t', sep = '\n')
+  
+  #function body
+  fn = paste(fn, '\tparms = c(list(), externalInputs, exprs)', sep = '\n')
+  fn = paste(fn, '\trates = exprs * 0', sep = '\n')
+  fn = paste(fn, '\trates = with(parms, {', sep = '\n')
+  #start with: create equations
+  inputNodes = getInputNodes(graph)
+  for (node in graph@nodeset) {
+    if(node$name %in% inputNodes)
+      next
+    eqn = paste('\t\t', 'rates[\"', node$name, '\"] = ', generateRateEqn(node), sep = '')
+    fn = paste(fn, eqn, sep = '\n')
+  }
+  
+  #end with
+  fn = paste(fn, '\t\treturn(rates)', sep = '\n')
+  fn = paste(fn, '\t})', sep = '\n')
+  fn = paste(fn, '\n\treturn(rates)', sep = '\n')
+  #end function
+  fn = paste(fn, '}', sep = '\n')
+  
+  return(eval(parse(text = fn)))
+}
+
 addEdgeHelper<-function(graph, edge){
 	graph@edgeset = c(graph@edgeset, edge)
 	
@@ -309,21 +364,252 @@ addEdgeHelper<-function(graph, edge){
 	return(graph)
 }
 
-getEdgeClass<-function(edgetype){
-	if(edgetype %in% 'or')
-		edgeclass = 'EdgeOr'
-	else if(edgetype %in% 'and')
-		edgeclass = 'EdgeAnd'
-	else
-		stop('Unrecognised edgetype')
-	
-	return(edgeclass)
+getEdgeClass <- function(edgetype) {
+  if (edgetype %in% 'or')
+    edgeclass = 'EdgeOr'
+  else if (edgetype %in% 'and')
+    edgeclass = 'EdgeAnd'
+  else
+    stop('Unrecognised edgetype')
+  
+  return(edgeclass)
+}
+
+orToAnd <- function(graph, from, to, weight) {
+  #ensure or edges exist and are compatible to merge (i.e. same to node)
+  if (length(to) > 1)
+    stop('Multiple to nodes provided, expected 1')
+  
+  if (length(from) < 2)
+    stop('Need 2 or more edges to merge into an AND edge')
+  
+  edgenames = paste(from, to, sep = '->')
+  if (any(!edgenames %in% names(graph@edgeset))) {
+    stop('Edges not found: ', paste(setdiff(edgenames, names(graph@edgeset)), collapse = ', '))
+  }
+  
+  oredges = graph@edgeset[edgenames]
+  #remove OR edges from nodeset
+  graph@edgeset = graph@edgeset[!names(graph@edgeset) %in% edgenames]
+  
+  #remove OR from inedges
+  toNode = getNode(graph, to)
+  toNode$inedges = toNode$inedges[!sapply(toNode$inedges, function (x) x$name) %in% edgenames]
+  getNode(graph, to) = toNode
+  
+  #add AND edge
+  graph = addEdge(
+    graph,
+    edgetype = 'and',
+    from = from,
+    to = to,
+    activation = as.logical(sapply(oredges, function(e) e$activation)),
+    weight = weight,
+    EC50 = as.numeric(sapply(oredges, function(e) e$EC50)),
+    n = as.numeric(sapply(oredges, function(e) e$n))
+  )
+  
+  return(graph)
+}
+
+# andToOr <- function(graph, from, to) {
+#   #ensure or edges exist and are compatible to merge (i.e. same to node)
+#   if (length(to) > 1)
+#     stop('Multiple to nodes provided, expected 1')
+#   
+#   if (length(from) < 2)
+#     stop('Need 2 or more edges to define an AND edge')
+#   
+#   andedge = getEdge(graph, from, to)
+#   if (is.null(andedge)) {
+#     stop('Edge not found')
+#   }
+#   
+#   #remove AND edge
+#   
+#   
+#   #create OR edges
+#   for (f in from){
+#     oredge = new(
+#       'EdgeOr',
+#       from = sapply(oredges, function(e) e$from),
+#       to = oredges[[1]]$to,
+#       activation = as.logical(sapply(oredges, function(e) e$activation)),
+#       weight = weight,
+#       EC50 = as.numeric(sapply(oredges, function(e) e$EC50)),
+#       n = as.numeric(sapply(oredges, function(e) e$n))
+#     )
+#   }
+#   
+#   #create AND edge
+#   oredges = graph@edgeset[edgenames]
+#   andedge = new(
+#     'EdgeAnd',
+#     from = sapply(oredges, function(e) e$from),
+#     to = oredges[[1]]$to,
+#     activation = as.logical(sapply(oredges, function(e) e$activation)),
+#     weight = weight,
+#     EC50 = as.numeric(sapply(oredges, function(e) e$EC50)),
+#     n = as.numeric(sapply(oredges, function(e) e$n))
+#   )
+#   
+#   #remove OR edge and add AND edge
+#   graph@edgeset = graph@edgeset[!names(graph@edgeset) %in% edgenames]
+#   graph@edgeset = c(graph@edgeset, andedge)
+#   names(graph@edgeset)[length(graph@edgeset)] = andedge$name
+#   
+#   #remove OR edges and add AND edge to inedges
+#   toNode = getNode(graph, to)
+#   toNode$inedges = toNode$inedges[!sapply(toNode$inedges, function (x) x$name) %in% edgenames]
+#   toNode$inedges = c(toNode$inedges, andedge)
+#   getNode(graph, to) = toNode
+#   
+#   return(graph)
+# }
+
+subsetGraph <- function(graph, snodes) {
+  nodes = graph@nodeset
+  edges = graph@edgeset
+  newnodes = nodes[snodes]
+  
+  #Deal with missing nodes in AND edges
+  andedges = edges[sapply(edges, is, 'EdgeAnd')]
+  
+  for(e in andedges) {
+    from = sapply(e$from, function(x) x$name)
+    from = from %in% names(newnodes)
+    
+    if (sum(from) == 1) {
+      #ONE from node exists
+      #convert to OR node
+      oredge = new(
+        'EdgeOr',
+        from = c(e$from[from]),
+        to = e$to,
+        activation = e$activation[from],
+        weight = e$weight,
+        EC50 = e$EC50[from],
+        n = e$n[from]
+      )
+      #add to edge list
+      edges = c(edges, oredge)
+      names(edges)[length(edges)] = oredge$name
+      #add to inedges list for relevant node
+      nodes[[oredge$to$name]]$inedges = c(nodes[[oredge$to$name]]$inedges, oredge)
+    }else if (sum(from) > 1) {
+      #SOME from nodes exist
+      #create a new AND edge with remaining nodes
+      andedge = new(
+        'EdgeAnd',
+        from = c(e$from[from]),
+        to = e$to,
+        activation = e$activation[from],
+        weight = e$weight,
+        EC50 = e$EC50[from],
+        n = e$n[from]
+      )
+      #add to edge list
+      edges = c(edges, andedge)
+      names(edges)[length(edges)] = andedge$name
+      #add to inedges list for relevant node
+      newnodes[[andedge$to$name]]$inedges = c(newnodes[[andedge$to$name]]$inedges, andedge)
+    }
+  }
+  
+  #subset edges
+  #OR edges
+  edges = edges[sapply(edges, function(x) {
+    exists = x$to$name %in% names(newnodes)
+    exists = exists & all(sapply(x$from, function(y) y$name) %in% names(newnodes))
+  })]
+  #remove additional edges from node data
+  nodes = list()
+  for (n in newnodes) {
+    n$inedges = n$inedges[sapply(n$inedges, function(x) x$name) %in% names(edges)]
+    nodes = c(nodes, n)
+  }
+  names(nodes) = sapply(nodes, function(x) x$name)
+  
+  graph@nodeset = nodes
+  graph@edgeset = edges
+  return(graph)
+}
+
+sampleSubNetwork <- function(graph, size, k, seed) {
+  #get the adjacency matrix for the graph
+  A = getAM(graph)
+  
+  #calculate total number of edges
+  m = sum(diag(A)) + sum(A[upper.tri(A)])
+  
+  #calculate theoretical edge numbers between nodes
+  degrees = rowSums(A)
+  P = (degrees %*% t(degrees)) / (2 * m)
+  B = A - P
+  
+  #start with empty network
+  s = rep(-1, ncol(A)) # 1 or -1 for inc. or excl. resp.
+  
+  #set seed and start adding neighbours
+  set.seed(seed)
+  s[sample(which(s < 0), 1)] = 1
+  
+  for (i in 2:size) {
+    #find neighbours
+    neighbours = which(colSums(A[s > 0, , drop = F]) > 0 & s < 0)
+    if (length(neighbours) == 0) {
+      s[sample(which(s < 0), 1)] = 1
+      next
+    }
+    
+    #generate subnetworks
+    subs = s %*% t(rep(1, length(s)))
+    diag(subs) = 1
+    subs = subs[ , neighbours]
+    #calculate modulatiry
+    Q = diag((t(subs) %*% B %*% subs) / (4 * m))
+    cand = neighbours[Q >= quantile(Q, 1-k)] #candidates for addition
+    s[cand[sample.int(length(cand),1)]] = 1
+  }
+  
+  #return names of nodes in sampled subgraph
+  return(colnames(A)[s > 0])
+}
+
+getAM <- function(graph, directed = F) {
+  nodes = graph@nodeset
+  edges = graph@edgeset
+  
+  A = matrix(rep(0, length(nodes) ^ 2), nrow = length(nodes))
+  colnames(A) = rownames(A) = names(nodes)
+  
+  #generate adjacency matrix: true edge numbers between nodes
+  for (e in edges) {
+    from = sapply(e$from, function(x) x$name)
+    to = e$to$name
+    A[from, to] = 1
+  }
+  
+  #if undirected
+  if (!directed) {
+    A = apply(A, 2, as.logical)
+    A = A | t(A)
+    A = apply(A, 2, as.numeric)
+    rownames(A) = colnames(A)
+  }
+  
+  return(A)
 }
 
 #----GraphGRN: Conversion functions----
-dfToGraphGRN <- function(edges, nodes) {
-  if(missing(nodes) || is.null(nodes)){
+dfToGraphGRN <- function(edges, nodes, loops = F) {
+  if (missing(nodes) || is.null(nodes)) {
     nodes = data.frame('node' = unique(c(edges[ , 1], edges[ , 3])), stringsAsFactors = F)
+  }
+  
+  #remove loops if required
+  if (!loops) {
+    edges = edges[edges[, 1] != edges[, 3], ]
   }
   
   #names for the main columns should be consistent
@@ -338,13 +624,13 @@ dfToGraphGRN <- function(edges, nodes) {
   #create graph object
   grn = new('GraphGRN')
   #add nodes
-  for (i in 1:nrow(nodes)){
+  for (i in 1:nrow(nodes)) {
     n = nodes[i, , drop = F]
     grn = addNode(grn, n$node, n$tau, n$max, n$deg)
   }
   
   #add edges
-  for (i in 1:nrow(edges)){
+  for (i in 1:nrow(edges)) {
     e = edges[i, , drop = F]
     grn = addEdge(grn, e$from, e$to, e$type, e$activation, e$weight, e$EC50, e$n)
   }

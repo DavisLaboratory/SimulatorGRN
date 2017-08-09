@@ -309,6 +309,33 @@ setMethod(
 	}
 )
 
+#----GraphGRN:removeNode----
+setGeneric(
+  name = 'removeNode',
+  def = function(graph, node) {
+    standardGeneric('removeNode')
+  }
+)
+
+setMethod(
+  f = 'removeNode',
+  signature = c('GraphGRN', 'character'),
+  definition = function(graph, node) {
+    #ensure or edges exist and are compatible to merge (i.e. same to node)
+    if (length(to) > 1)
+      stop('Multiple nodes provided, expected 1')
+    
+    if (!node %in% names(graph(nodeset))) {
+      stop('Node not found')
+    }
+    
+    #if edge exists, remove it from nodeset and from inedges
+    graph = getSubGraph(graph, setdiff(names(graph(nodeset)), node))
+    
+    return(graph)
+  }
+)
+
 #----GraphGRN:addEdge----
 setGeneric(
 	name = 'addEdge',
@@ -329,12 +356,9 @@ setMethod(
 		}
 		
 		#get class
-		if(missing(edgetype) || edgetype %in% 'or')
-			edgeclass = 'EdgeOr'
-		else if(edgetype %in% 'and')
-			edgeclass = 'EdgeAnd'
-		else
-			stop('Unrecognised edgetype')
+		if(missing(edgetype) || is.null(edgetype))
+		  edgetype = 'or'
+		edgeclass = getEdgeClass(edgetype)
 		
 		#create default edge
 		edgeObj = new(edgeclass, from = c(fromnode), to = tonode)
@@ -361,6 +385,55 @@ setMethod(
 		
 		return(graph)
 	}
+)
+
+#----GraphGRN:removeEdge----
+setGeneric(
+  name = 'removeEdge',
+  def = function(graph, from, to) {
+    standardGeneric('removeEdge')
+  }
+)
+
+setMethod(
+  f = 'removeEdge',
+  signature = c('GraphGRN', 'character', 'character'),
+  definition = function(graph, from, to) {
+    #ensure or edges exist and are compatible to merge (i.e. same to node)
+    if (length(to) > 1)
+      stop('Multiple to nodes provided, expected 1')
+    
+    edge = getEdge(graph, from, to)
+    if (is.null(andedge)) {
+      stop('Edge not found')
+    }
+    
+    #if edge exists, remove it from nodeset and from inedges
+    graph@edgeset = graph@edgeset[!names(graph@edgeset) %in% edge$name]
+    toNode = getNode(graph, to)
+    toNode$inedges = toNode$inedges[!sapply(toNode$inedges, function (x) x$name) %in% edge$name]
+    getNode(graph, to) = toNode
+    
+    return(graph)
+  }
+)
+
+#----GraphGRN:mergeOr----
+setGeneric(
+  name = 'mergeOr',
+  def = function(graph, from, to, weight) {
+    standardGeneric('mergeOr')
+  }
+)
+
+setMethod(
+  f = 'mergeOr',
+  signature = c('GraphGRN', 'character', 'character', 'ANY'),
+  definition = function(graph, from, to, weight) {
+    if (missing(weight) || is.null(weight))
+      weight = 1
+    orToAnd(graph, from, to, weight)
+  }
 )
 
 #----GraphGRN:getEdge----
@@ -416,16 +489,12 @@ setMethod(
 	f = 'getInputNodes',
 	signature = c('GraphGRN'),
 	definition = function(graph) {
-		inputnodes = sapply(graph@nodeset, function(x) {
-			nodename = NA
-			if (length(x$inedges) == 0) {
-				nodename = x$name
-			}
-			return(nodename)
-		})
-		
-		inputnodes = inputnodes[!is.na(inputnodes)]
-		names(inputnodes) = NULL
+	  A = getAM(graph, directed = T)
+	  #ignore self loops for identification of input nodes
+	  diag(A) = 0
+	  
+	  #nodes with 0 degree
+		inputnodes = colnames(A)[colSums(A) == 0]
 		
 		return(inputnodes)
 	}
@@ -507,43 +576,43 @@ setGeneric(
 setMethod(
 	f = 'generateODE',
 	signature = c('GraphGRN'),
-	definition = function(graph) {
-		fn = 'function(exprs, externalInputs) {'
-		
-		#define the activation function
-		fn = paste(fn, '\tfAct <- function(TF, EC50 = 0.5, n = 1.39) {', sep = '\n')
-		fn = paste(fn, '\t\tB = (EC50 ^ n - 1) / (2 * EC50 ^ n - 1)', sep = '\n')
-		fn = paste(fn, '\t\tK_n = (B - 1)', sep = '\n')
-		fn = paste(fn, '\t\tact = B * TF ^ n / (K_n + TF ^ n)', sep = '\n')
-		fn = paste(fn, '\t\t', sep = '\n')
-		fn = paste(fn, '\t\treturn(act)', sep = '\n')
-		fn = paste(fn, '\t}', sep = '\n')
-		fn = paste(fn, '\t', sep = '\n')
-		
-		#function body
-		fn = paste(fn, '\tparms = c(list(), externalInputs, exprs)', sep = '\n')
-		fn = paste(fn, '\trates = exprs * 0', sep = '\n')
-		fn = paste(fn, '\trates = with(parms, {', sep = '\n')
-		#start with: create equations
-		inputNodes = getInputNodes(graph)
-		for (node in graph@nodeset) {
-			if(node$name %in% inputNodes)
-				next
-			eqn = paste('\t\t', 'rates[\"', node$name, '\"] = ', generateRateEqn(node), sep = '')
-			fn = paste(fn, eqn, sep = '\n')
-		}
-		
-		#end with
-		fn = paste(fn, '\t\treturn(rates)', sep = '\n')
-		fn = paste(fn, '\t})', sep = '\n')
-		fn = paste(fn, '\n\treturn(rates)', sep = '\n')
-		#end function
-		fn = paste(fn, '}', sep = '\n')
-		
-		return(eval(parse(text = fn)))
-	}
+	definition = getODEFunc
 )
 
-#----GraphGRN: sample----
+#----GraphGRN: getSubGraph----
+setGeneric(
+  name = 'getSubGraph',
+  def = function(graph, snodes) {
+    standardGeneric('getSubGraph')
+  }
+)
 
+setMethod(
+  f = 'getSubGraph',
+  signature = c('GraphGRN', 'character'),
+  definition = subsetGraph
+)
+
+#----GraphGRN: sampleGraph----
+setGeneric(
+  name = 'sampleGraph',
+  def = function(graph, size, k, seed) {
+    standardGeneric('sampleGraph')
+  }
+)
+
+setMethod(
+  f = 'sampleGraph',
+  signature = c('GraphGRN', 'numeric', 'ANY', 'ANY'),
+  definition = function(graph, size, k, seed){
+    if (missing(k))
+      k = 0.25
+    if (missing(seed))
+      seed = sample.int(1E6, 1)
+    
+    snodes = sampleSubNetwork(graph, size, k, seed)
+    subgraph = getSubGraph(graph, snodes)
+    return(subgraph)
+  }
+)
 

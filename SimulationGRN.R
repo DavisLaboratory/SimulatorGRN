@@ -84,5 +84,23 @@ setMethod(
 	}
 )
 
+#----SimulationGRN: diagnostics----
+setGeneric(
+  name = 'diagnostics',
+  def = function(simulation) {
+    standardGeneric('diagnostics')
+  }
+)
+
+setMethod(
+  f = 'diagnostics',
+  signature = c('SimulationGRN'),
+  definition = function(simulation){
+    cat('Diagnostics from the solver: ', 'nleqslv', '\n')
+    cat('Use ?nleqslv to understand the results', '\n\n')
+    return(simulation@solution)
+  }
+)
+
 
 
