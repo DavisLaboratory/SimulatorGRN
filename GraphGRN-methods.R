@@ -445,7 +445,8 @@ andToOr <- function(graph, from, to) {
   }
 
   #remove AND edge
-  graph = removeEdge(graph, andedge)
+  graph = graph = removeEdge(graph, sapply(andedge$from, function (x)
+    x$name), andedge$to$name)
 
   #add OR edges
   for (i in 1:length(andedge$from)){
@@ -539,7 +540,7 @@ getAM <- function(graph, directed = F) {
 }
 
 #----GraphGRN: Conversion functions----
-dfToGraphGRN <- function(edges, nodes, loops = F) {
+dfToGraphGRN <- function(edges, nodes, propand = 0.3, loops = F, seed = sample.int(1E6, 1)) {
   if (missing(nodes) || is.null(nodes)) {
     nodes = data.frame('node' = unique(c(edges[ , 1], edges[ , 3])), stringsAsFactors = F)
   }
@@ -571,6 +572,29 @@ dfToGraphGRN <- function(edges, nodes, loops = F) {
     e = edges[i, , drop = F]
     grn = addEdge(grn, e$from, e$to, e$type, e$activation, e$weight, e$EC50, e$n)
   }
+  
+  #convert propand proportion of or's to and's
+  #identify nodes with more than 2 inputs
+  totaledges = length(grn@edgeset)
+  andedges = round(totaledges * propand / 2)
+  edgeset = grn@edgeset
+  nodesin = sapply(nodeset, function(x) sum(sapply(x$inedges, is, 'EdgeOr')))
+  
+  #sample and convert to and edges
+  # set.seed(seed)
+  # for (i in 1:andedges) {
+  #   candtgts = names(nodesin)[nodesin > 1]
+  #   toNode = sample(candtgts, 1)
+  #   
+  #   #sample 2 OR edges to combine
+  #   inedges = getNode(grn, toNode)$inedges
+  #   inedges = inedges[sapply(inedges, is, 'EdgeOr')]
+  #   fromNodes = sapply(sample(inedges, 2), function (x) x$from[[1]]$name)
+  #   
+  #   #convert OR to AND edge
+  #   grn = mergeOr(grn, fromNodes, toNode, 1)
+  #   nodesin[toNode] = nodesin[toNode] - 2
+  # }
   
   return(grn)
 }
