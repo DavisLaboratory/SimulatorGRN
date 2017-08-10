@@ -590,7 +590,7 @@ dfToGraphGRN <- function(edges, nodes, propand = 0.3, loops = F, seed = sample.i
   for (i in 1:andedges) {
     candtgts = names(nodesin)[nodesin > 1]
     if (length(candtgts) == 0) {
-      msg = paste0('Only ', i, '/', andedges, 'could be created')
+      msg = paste0('Only ', i, '/', andedges, ' could be created')
       warning(msg)
       break
     }
