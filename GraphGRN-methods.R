@@ -578,23 +578,33 @@ dfToGraphGRN <- function(edges, nodes, propand = 0.3, loops = F, seed = sample.i
   totaledges = length(grn@edgeset)
   andedges = round(totaledges * propand / 2)
   edgeset = grn@edgeset
-  nodesin = sapply(nodeset, function(x) sum(sapply(x$inedges, is, 'EdgeOr')))
+  nodesin = sapply(grn@nodeset, function(x) {
+    sum(as.numeric(sapply(x$inedges, is, 'EdgeOr')))
+  })
+  
+  if (andedges == 0)
+    return(grn)
   
   #sample and convert to and edges
-  # set.seed(seed)
-  # for (i in 1:andedges) {
-  #   candtgts = names(nodesin)[nodesin > 1]
-  #   toNode = sample(candtgts, 1)
-  #   
-  #   #sample 2 OR edges to combine
-  #   inedges = getNode(grn, toNode)$inedges
-  #   inedges = inedges[sapply(inedges, is, 'EdgeOr')]
-  #   fromNodes = sapply(sample(inedges, 2), function (x) x$from[[1]]$name)
-  #   
-  #   #convert OR to AND edge
-  #   grn = mergeOr(grn, fromNodes, toNode, 1)
-  #   nodesin[toNode] = nodesin[toNode] - 2
-  # }
+  set.seed(seed)
+  for (i in 1:andedges) {
+    candtgts = names(nodesin)[nodesin > 1]
+    if (length(candtgts) == 0) {
+      msg = paste0('Only ', i, '/', andedges, 'could be created')
+      warning(msg)
+      break
+    }
+    toNode = sample(candtgts, 1)
+
+    #sample 2 OR edges to combine
+    inedges = getNode(grn, toNode)$inedges
+    inedges = inedges[sapply(inedges, is, 'EdgeOr')]
+    fromNodes = sapply(sample(inedges, 2), function (x) x$from[[1]]$name)
+
+    #convert OR to AND edge
+    grn = mergeOr(grn, fromNodes, toNode, 1)
+    nodesin[toNode] = nodesin[toNode] - 2
+  }
   
   return(grn)
 }
