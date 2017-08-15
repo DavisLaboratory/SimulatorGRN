@@ -5,8 +5,8 @@ setClass(
 		name = 'character',
 		spmax = 'numeric',
 		spdeg = 'numeric',
-		inedges = 'list',
-		outedges = 'list'
+		inedges = 'character',
+		outedges = 'character'
 	)
 )
 setValidity('Node', validNode)
@@ -47,10 +47,8 @@ setMethod(
     cat('RNA degradation rate:', object@spdeg, '\n')
     
     #print edge list
-    edgelist = sapply(object@inedges, function(x) x$name)
-    cat('Incoming edges:', maxPrint(edgelist, mxp), '\n')
-    edgelist = sapply(object@outedges, function(x) x$name)
-    cat('Outgoing edges:', maxPrint(edgelist, mxp), '\n')
+    cat('Incoming edges:', maxPrint(object@inedges, mxp), '\n')
+    cat('Outgoing edges:', maxPrint(object@outedges, mxp), '\n')
   }
 )
 
@@ -81,14 +79,14 @@ setMethod(
 
 setGeneric(
 	name = 'generateEqn',
-	def = function(object){
+	def = function(node, graph){
 		standardGeneric('generateEqn')
 	}
 )
 
 setMethod(
 	f = 'generateEqn',
-	signature = 'NodeRNA',
+	signature = c('NodeRNA', 'GraphGRN'),
 	definition = generateRateEqn
 )
 
@@ -96,8 +94,8 @@ setMethod(
 setClass(
 	Class = 'Edge',
 	slots = list(
-		from = 'list',
-		to = 'Node',
+		from = 'character',
+		to = 'character',
 		weight = 'numeric',
 		name = 'character'
 	)
@@ -135,8 +133,8 @@ setMethod(
 		
 		cat(paste0('***', class(object), '***'), '\n')
 		cat('Name:', object@name, '\n')
-		cat('From:', maxPrint(sapply(object@from, function(x) x$name), mxp), '\n')
-		cat('To:', object@to$name, '\n')
+		cat('From:', maxPrint(object@from, mxp), '\n')
+		cat('To:', object@to, '\n')
 		cat('Weight:', object@weight, '\n')
 	}
 )
@@ -315,7 +313,7 @@ setMethod(
 #----GraphGRN:removeNode----
 setGeneric(
   name = 'removeNode',
-  def = function(graph, nodename) {
+  def = function(graph, nodenames) {
     standardGeneric('removeNode')
   }
 )
@@ -323,68 +321,10 @@ setGeneric(
 setMethod(
   f = 'removeNode',
   signature = c('GraphGRN', 'character'),
-  definition = function(graph, nodename) {
-    #ensure or edges exist and are compatible to merge (i.e. same to node)
-    if (length(nodename) > 1)
-      stop('Multiple nodes provided, expected 1')
-    
-    if (!nodename %in% names(graph@nodeset)) {
-      stop('Node not found')
-    }
-    
-    #retrieve node
-    node = getNode(graph, nodename)
-    
-    #remove from inedges of targets
-    edges = node$inedges
-    for (e in edges) {
-      from = sapply(e$from, function(n) n$name)
-      graph = removeEdge(graph, from, e$to$name) #remove edge
-    }
-    
-    #remove from inedges of targets
-    edges = node$outedges
-    for (e in edges) {
-      from = sapply(e$from, function(n) n$name)
-      graph = removeEdge(graph, from, e$to$name) #remove edge
-      
-      if (is(e, 'EdgeAnd')) {
-        newfrom = !from %in% node$name
-        
-        if (sum(newfrom) > 1) {
-          #create a new AND node without the current node
-          graph = addEdge(
-            graph,
-            edgetype = 'and',
-            from = sapply(e$from[newfrom], function(n) n$name),
-            to = e$to$name,
-            activation = e$activation[newfrom],
-            weight = e$weight,
-            EC50 = e$EC50[newfrom],
-            n = e$n[newfrom]
-          )
-        } else{
-          #create a new OR node without the current node
-          graph = addEdge(
-            graph,
-            edgetype = 'or',
-            from = sapply(e$from[newfrom], function(n) n$name),
-            to = e$to$name,
-            activation = e$activation[newfrom],
-            weight = e$weight,
-            EC50 = e$EC50[newfrom],
-            n = e$n[newfrom]
-          )
-        }
-      }
-    }
-    
-    #remove node from nodeset
-    graph@nodeset = graph@nodeset[!names(graph@nodeset) %in% node$name]
-    
-    #if edge exists, remove it from nodeset and from inedges
-    # graph = getSubGraph(graph, setdiff(names(graph(nodeset)), node))
-    
+  definition = function(graph, nodenames) {
+    for (n in nodenames) {
+      graph = rmnode(graph, n)
+    }    
     return(graph)
   }
 )
@@ -401,20 +341,13 @@ setMethod(
 	f = 'addEdge',
 	signature = c('GraphGRN', 'character', 'character', 'ANY', 'ANY', 'ANY', 'ANY', 'ANY'),
 	definition = function(graph, from, to, edgetype, activation, weight, EC50, n) {
-		#retrieve nodes from graph
-		tonode = getNode(graph, to)
-		fromnode = list()
-		for (i in 1:length(from)){
-			fromnode = c(fromnode, getNode(graph, from[i]))
-		}
-		
 		#get class
 		if(missing(edgetype) || is.null(edgetype))
 		  edgetype = 'or'
 		edgeclass = getEdgeClass(edgetype)
 		
 		#create default edge
-		edgeObj = new(edgeclass, from = c(fromnode), to = tonode)
+		edgeObj = new(edgeclass, from = c(from), to = to)
 		#modify default edge with provided parameters
 		if(!missing(activation) && !is.null(activation))
 			edgeObj$activation = activation
@@ -429,12 +362,14 @@ setMethod(
 		graph@edgeset = c(graph@edgeset, edgeObj)
 		
 		#update node inedges information
-		tonode$inedges = c(tonode$inedges, edgeObj)
+		tonode = graph@nodeset[[to]]
+		tonode$inedges = c(tonode$inedges, edgeObj$name)
 		graph@nodeset[[tonode$name]] = tonode
 		
 		#update node outedges information
+		fromnode = graph@nodeset[from]
 		for (f in fromnode) {
-		  f$outedges = c(f$outedges, edgeObj)
+		  f$outedges = c(f$outedges, edgeObj$name)
 		  graph@nodeset[[f$name]] = f
 		}
 		
@@ -458,7 +393,7 @@ setMethod(
   f = 'removeEdge',
   signature = c('GraphGRN', 'character', 'character'),
   definition = function(graph, from, to) {
-    #ensure or edges exist and are compatible to merge (i.e. same to node)
+    #ensure or edges exists
     if (length(to) > 1)
       stop('Multiple to nodes provided, expected 1')
     
@@ -470,13 +405,13 @@ setMethod(
     #if edge exists, remove it from nodeset, from inedges
     graph@edgeset = graph@edgeset[!names(graph@edgeset) %in% edge$name]
     toNode = getNode(graph, to)
-    toNode$inedges = toNode$inedges[!sapply(toNode$inedges, function (x) x$name) %in% edge$name]
+    toNode$inedges = toNode$inedges[!toNode$inedges %in% edge$name]
     getNode(graph, to) = toNode
     
     #remove from outedges of from nodes
     for (f in from) {
       fromNode = getNode(graph, f)
-      fromNode$outedges = fromNode$outedges[!sapply(fromNode$outedges, function (x) x$name) %in% edge$name]
+      fromNode$outedges = fromNode$outedges[!fromNode$outedges %in% edge$name]
       getNode(graph, f) = fromNode
     }
     
@@ -673,6 +608,28 @@ setMethod(
   f = 'getSubGraph',
   signature = c('GraphGRN', 'character'),
   definition = subsetGraph
+)
+
+#----GraphGRN: getAM----
+setGeneric(
+  name = 'getAM',
+  def = function(graph, directed) {
+    standardGeneric('getAM')
+  }
+)
+
+setMethod(
+  f = 'getAM',
+  signature = c('GraphGRN', 'logical'),
+  definition = getAMC
+)
+
+setMethod(
+  f = 'getAM',
+  signature = c('GraphGRN', 'missing'),
+  definition = function(graph, directed) {
+    return(getAMC(graph, T))
+  }
 )
 
 #----GraphGRN: sampleGraph----

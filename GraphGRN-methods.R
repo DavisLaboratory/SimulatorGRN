@@ -9,55 +9,11 @@ validNode <- function(object) {
 	if (!is.na(object@spdeg) & (object@spdeg < 0 | object@spdeg > 1)) {
 		stop('RNA degradation rate has to be between 0 and 1')
 	}
-	
-	#Incoming edges
-	if (!all(sapply(object@inedges, is, 'Edge'))) {
-		stop('All inedges must be valid Edge objects')
-	}
-	
-	#Outgoing edges
-	if (!all(sapply(object@outedges, is, 'Edge'))) {
-		stop('All outedges must be valid Edge objects')
-	}
-	
-	#Incoming edges: check that all edges have to as this node
-	testin = sapply(object@inedges, function(x) {
-		return(identical(x$to$name, object$name))
-	})
-	
-	if (!all(testin)) {
-		stop('All interactions must have the \'to\' node as the current node')
-	}
-	
-	#Outgoing edges: check that all edges have this node as part of from
-	testout = sapply(object@outedges, function(x) {
-		return(object$name %in% sapply(x$from, function (n) n$name))
-	})
-	
-	if (!all(testout)) {
-		stop('All interactions must have the current node as part of \'from\'')
-	}
-	
-	#Incoming edges: check that all regulators are unique
-	regnames = sapply(object@inedges, function(x) {
-		sapply(x$from, slot, 'name')
-	})
-	regnames = as.vector(regnames)
-	if (length(unique(regnames)) < length(regnames)) {
-		stop('All regulators must be unique')
-	}
-	
-	#outgoing edges: check that all targets are unique
-	tgtnames = sapply(object@outedges, function(x) x$to$name)
-	tgtnames = as.vector(tgtnames)
-	if (length(unique(tgtnames)) < length(tgtnames)) {
-		stop('All targets must be unique')
-	}
-	
-	return(TRUE)
+
+  return(TRUE)
 }
 
-initNode <- function(.Object, ..., name = '', spmax = 1, spdeg = 1, inedges = list(), outedges = list()) {
+initNode <- function(.Object, ..., name = '', spmax = 1, spdeg = 1, inedges = character(), outedges = character()) {
 	.Object@name = name
 	.Object@spmax = spmax
 	.Object@spdeg = spdeg
@@ -86,15 +42,15 @@ initNodeRNA <- function(.Object, ..., tau = 1) {
 	return(.Object)
 }
 
-generateRateEqn <- function(object) {
-	inedges = object$inedges
+generateRateEqn <- function(node, graph) {
+	inedges = node$inedges
 	#no rate equations for input nodes
 	if (length(inedges) == 0) {
 		return('')
 	}
 	
 	#generate activation functions for each interaction
-	actEqns = sapply(inedges, generateActivationEqn)
+	actEqns = sapply(graph@edgeset[inedges], generateActivationEqn)
 	act = paste(actEqns, collapse = ' + ')
 	
 	#subtract the combinations
@@ -116,8 +72,8 @@ generateRateEqn <- function(object) {
 	
 	#generate rate equation
 	rateEqn = paste('(', act, ')', sep = '')
-	rateEqn = paste(rateEqn, object@spmax, sep = ' * ')
-	degradationEqn = paste(object@spdeg, object@name, sep = ' * ')
+	rateEqn = paste(rateEqn, node@spmax, sep = ' * ')
+	degradationEqn = paste(node@spdeg, node@name, sep = ' * ')
 	rateEqn = paste(rateEqn, degradationEqn, sep = ' - ')
 	return(rateEqn)
 }
@@ -128,11 +84,6 @@ validEdge <- function(object) {
 	if (any(is.na(object@weight)) | sum(object@weight < 0 | object@weight > 1) > 0) {
 		stop('Interaction weight has to be between 0 and 1')
 	}
-  
-  #from are all of class Node
-  if (!all(sapply(object@from, is, 'Node'))) {
-    stop('All from nodes must be of class \'Node\'')
-  }
 }
 
 validActivationParams <- function(object) {
@@ -185,9 +136,8 @@ initEdgeOr <- function(.Object, ..., from, to, weight = 1, EC50 = 0.5, n = 1.39,
   .Object@activation = activation
   
   #generate name
-  name = sapply(from, function(x) x$name)
-  name = paste(name, collapse = '')
-  name = paste(name, to$name, sep = '->')
+  name = paste(from, collapse = '')
+  name = paste(name, to, sep = '->')
   .Object@name = name
   
   validObject(.Object)
@@ -197,7 +147,7 @@ initEdgeOr <- function(.Object, ..., from, to, weight = 1, EC50 = 0.5, n = 1.39,
 generateActivationEqnOr <- function(object) {
 	e = object
 	#generate activation eqn
-	act = paste('fAct(', e$from[[1]]$name, ',', e$EC50, ',', e$n, ')', sep =	'')
+	act = paste('fAct(', e$from, ',', e$EC50, ',', e$n, ')', sep =	'')
 	if (!e$activation) {
 		act = paste('(1-', act, ')', sep = '')
 	}
@@ -231,7 +181,7 @@ validEdgeAnd <- function(object) {
 		stop('Missing Hill constant(n) parameters for the AND interaction')
 	}
 	
-	#Hill constant length matches number of interactors
+	#Activation length matches number of interactors
 	if (length(object@activation) != numint) {
 		stop('Missing activation/repression status for the AND interaction')
 	}
@@ -256,9 +206,8 @@ initEdgeAnd <- function(.Object, ..., from, to, weight = 1, EC50 = c(), n = c(),
 	.Object@activation = activation
 	
 	#generate name
-	name = sapply(from, function(x) x$name)
-	name = paste(name, collapse = '')
-	name = paste(name, to$name, sep = '->')
+	name = paste(from, collapse = '')
+	name = paste(name, to, sep = '->')
 	.Object@name = name
 	
 	validObject(.Object)
@@ -271,8 +220,8 @@ generateActivationEqnAnd <- function(object) {
 	#generate AND activation eqn
 	act = character(length(e@from))
 	for (i in 1:length(act)) {
-		act[i] = paste('fAct(', e@from[[i]]$name, ',', e@EC50[[i]], ',', e@n[[i]], ')', sep =	'')
-		if (!e$activation[[i]]) {
+		act[i] = paste('fAct(', e@from[i], ',', e@EC50[i], ',', e@n[i], ')', sep =	'')
+		if (!e$activation[i]) {
 			act[i] = paste('(1-', act[i], ')', sep = '')
 		}
 	}
@@ -294,15 +243,69 @@ validGraphGRN <- function(object) {
 		stop('Invalid graph generated. Use the \'addNode\' method to add a node to the graph.')
 	}
 	
-	#nodeset are all of class Node
+	#edgeset are all of class Edge
 	if (!all(sapply(object@edgeset, is, 'Edge'))) {
 		stop('All nodes must be of class \'Edge\'')
 	}
 	
-	#check names of nodeset
+	#check names of edgeset
 	if (!all(sapply(object@edgeset, function(x) x$name) == names(object@edgeset))){
 		stop('Invalid graph generated. Use the \'addEdge\' method to add an edge to the graph.')
 	}
+  
+  #edge checks
+  nnames = names(object@nodeset)
+  for (e in object@edgeset) {
+    if (!all(e$from %in% nnames)) {
+      stop('Some/all from nodes do not exist in edge: ', e$name)
+    }
+    if (!e$to %in% nnames) {
+      stop('To node does not exist in edge: ', e$name)
+    }
+  }
+  
+  #node checks
+  #check node duplication
+  if (length(unique(nnames)) != length(nnames)) {
+    stop('All nodes in the graph must be unique')
+  }
+  
+  enames = names(object@edgeset)
+  for (n in object@nodeset) {
+    #check whether the incoming and outgoing edges exist
+    if (!all(n$inedges %in% enames)) {
+      stop('Some/all inbound edges do not exist in node: ', n$name)
+    }
+    if (!all(n$outedges %in% enames)) {
+      stop('Some/all outbound edges do not exist in node: ', n$name)
+    }
+    
+    #Incoming edges: check that all edges have to as this node
+    infroms = unlist(sapply(object@edgeset[n$inedges], function(e) e$from))
+    intos = sapply(object@edgeset[n$inedges], function(e) e$to)
+    
+    if (!all(intos %in% n$name)) {
+      stop('All interactions must have the \'to\' node as current node for node: ', n$name)
+    }
+    
+    #Incoming edges: check that all regulators are unique
+    if (length(unique(infroms)) != length(infroms)) {
+      stop('All regulators must be unique for node: ', n$name)
+    }
+    
+    #Outgoing edges: check that all edges have from as this node
+    outfroms = lapply(object@edgeset[n$outedges], function(e) e$from)
+    outtos = sapply(object@edgeset[n$outedges], function(e) e$to)
+    
+    if (!all(sapply(outfroms, function (flist) any(flist %in% n$name)))) {
+      stop('All interactions must have the current node as part of \'from\' for node: ', n$name)
+    }
+    
+    #Outgoing edges: check that all targets are unique
+    if (length(unique(outtos)) != length(outtos)) {
+      stop('All targets must be unique for node: ', n$name)
+    }
+  }
 	
 	return(TRUE)
 }
@@ -318,8 +321,8 @@ initGraphGRN <- function(.Object, ..., nodeset = list(), edgeset = list()) {
 
 removeMissing <- function(graph) {
   #remove nodes with no interactions
-  intnodes = sapply(graph@edgeset, function (e) sapply(e$from, function(n) n$name))
-  intnodes = c(intnodes, sapply(graph@edgeset, function (e) e$to$name))
+  intnodes = unlist(sapply(graph@edgeset, function (e) e$from))
+  intnodes = c(intnodes, sapply(graph@edgeset, function (e) e$to))
   intnodes = unique(intnodes)
   
   #warning and remove
@@ -328,7 +331,7 @@ removeMissing <- function(graph) {
     msg = paste0('Nodes without interactions removed: ', paste(nonintnodes, collapse = ', '))
     warning(msg)
     
-    graph@nodeset = graph@nodeset[intnodes]
+    graph = removeNode(graph, nonintnodes)
   }
   return(graph)
 }
@@ -357,7 +360,7 @@ getODEFunc <- function(graph) {
   for (node in graph@nodeset) {
     if(node$name %in% inputNodes)
       next
-    eqn = paste('\t\t', 'rates[\"', node$name, '\"] = ', generateRateEqn(node), sep = '')
+    eqn = paste('\t\t', 'rates[\"', node$name, '\"] = ', generateRateEqn(node, graph), sep = '')
     fn = paste(fn, eqn, sep = '\n')
   }
   
@@ -371,21 +374,6 @@ getODEFunc <- function(graph) {
   return(eval(parse(text = fn)))
 }
 
-addEdgeHelper<-function(graph, edge){
-	graph@edgeset = c(graph@edgeset, edge)
-	
-	#update node inedges information
-	to$inedges = c(to$inedges, edge)
-	graph@nodeset[[to$name]] = to
-	validObject(graph)
-	
-	#named entry to graph structure
-	names(graph@edgeset)[length(graph@edgeset)] = edge$name
-	validObject(graph)
-	
-	return(graph)
-}
-
 getEdgeClass <- function(edgetype) {
   if (edgetype %in% 'or')
     edgeclass = 'EdgeOr'
@@ -397,8 +385,61 @@ getEdgeClass <- function(edgetype) {
   return(edgeclass)
 }
 
+rmnode <- function(graph, nodename) {
+  #Check nodename exists
+  if (length(nodename) > 1)
+    stop('Multiple nodes provided, expected 1')
+  
+  if (!nodename %in% names(graph@nodeset)) {
+    stop('Node not found')
+  }
+  
+  #retrieve node
+  node = getNode(graph, nodename)
+  
+  #remove from incoming interactions
+  edges = graph@edgeset[node$inedges]
+  for (e in edges) {
+    graph = removeEdge(graph, e$from, e$to) #remove edge
+  }
+  
+  #remove from inedges of targets
+  edges = graph@edgeset[node$outedges]
+  for (e in edges) {
+    from = e$from
+    graph = removeEdge(graph, from, e$to) #remove edge
+    
+    if (is(e, 'EdgeAnd')) {
+      newfrom = !from %in% node$name
+      
+      if (sum(newfrom) > 1) {
+        edgetype = 'and'
+      } else{
+        edgetype = 'or'
+      }
+      
+      #create a new edge without the current node
+      graph = addEdge(
+        graph,
+        edgetype = edgetype,
+        from = e$from[newfrom],
+        to = e$to,
+        activation = e$activation[newfrom],
+        weight = e$weight,
+        EC50 = e$EC50[newfrom],
+        n = e$n[newfrom]
+      )
+    }
+  }
+  
+  #remove node from nodeset
+  graph@nodeset = graph@nodeset[!names(graph@nodeset) %in% node$name]
+  
+  return(graph)
+}
+
 orToAnd <- function(graph, from, to, weight) {
-  #ensure or edges exist and are compatible to merge (i.e. same to node)
+  #ensure or edges exist
   if (length(to) > 1)
     stop('Multiple to nodes provided, expected 1')
   
@@ -413,7 +454,7 @@ orToAnd <- function(graph, from, to, weight) {
   oredges = graph@edgeset[edgenames]
   #remove OR edges from graph
   for (e in oredges) {
-    graph = removeEdge(graph, sapply(e$from, function (x) x$name), e$to$name)
+    graph = removeEdge(graph, e$from, e$to)
   }
   
   #add AND edge
@@ -432,7 +473,7 @@ orToAnd <- function(graph, from, to, weight) {
 }
 
 andToOr <- function(graph, from, to) {
-  #ensure or edges exist and are compatible to merge (i.e. same to node)
+  #ensure or edges exist
   if (length(to) > 1)
     stop('Multiple to nodes provided, expected 1')
 
@@ -445,16 +486,15 @@ andToOr <- function(graph, from, to) {
   }
 
   #remove AND edge
-  graph = graph = removeEdge(graph, sapply(andedge$from, function (x)
-    x$name), andedge$to$name)
+  graph = graph = removeEdge(graph, andedge$from, andedge$to)
 
   #add OR edges
   for (i in 1:length(andedge$from)){
     graph = addEdge(
       graph,
       edgetype = 'or',
-      from = andedge$from[[i]]$name,
-      to = andedge$to$name,
+      from = andedge$from[i],
+      to = andedge$to,
       activation = andedge$activation[i],
       weight = andedge$weight,
       EC50 = andedge$EC50[i],
@@ -466,7 +506,7 @@ andToOr <- function(graph, from, to) {
 }
 
 subsetGraph <- function(graph, snodes) {
-  #remove non-existing nodes from the graph
+  #remove nodes from the graph
   for (n in setdiff(names(graph@nodeset), snodes)) {
     graph = removeNode(graph, n)
   }
@@ -475,7 +515,7 @@ subsetGraph <- function(graph, snodes) {
 
 sampleSubNetwork <- function(graph, size, k, seed) {
   #get the adjacency matrix for the graph
-  A = getAM(graph)
+  A = getAM(graph, directed = F)
   
   #calculate total number of edges
   m = sum(diag(A)) + sum(A[upper.tri(A)])
@@ -514,7 +554,7 @@ sampleSubNetwork <- function(graph, size, k, seed) {
   return(colnames(A)[s > 0])
 }
 
-getAM <- function(graph, directed = F) {
+getAMC <- function(graph, directed = T) {
   nodes = graph@nodeset
   edges = graph@edgeset
   
@@ -523,9 +563,7 @@ getAM <- function(graph, directed = F) {
   
   #generate adjacency matrix: true edge numbers between nodes
   for (e in edges) {
-    from = sapply(e$from, function(x) x$name)
-    to = e$to$name
-    A[from, to] = 1
+    A[e$from, e$to] = 1
   }
   
   #if undirected
@@ -575,35 +613,49 @@ dfToGraphGRN <- function(edges, nodes, propand = 0.3, loops = F, seed = sample.i
   
   #convert propand proportion of or's to and's
   #identify nodes with more than 2 inputs
-  totaledges = length(grn@edgeset)
-  andedges = round(totaledges * propand / 2)
   edgeset = grn@edgeset
+  totaledges = length(edgeset)
   nodesin = sapply(grn@nodeset, function(x) {
-    sum(as.numeric(sapply(x$inedges, is, 'EdgeOr')))
+    sum(as.numeric(sapply(edgeset[x$inedges], is, 'EdgeOr')))
   })
-  
-  if (andedges == 0)
-    return(grn)
   
   #sample and convert to and edges
   set.seed(seed)
-  for (i in 1:andedges) {
-    candtgts = names(nodesin)[nodesin > 1]
+  andsize = c(2, 3, 4)
+  andprobs = c(1, 0, 0)
+  pAnd = 0
+  nfroms = 2
+  while (pAnd < propand) {
+    candtgts = names(nodesin)[nodesin >= nfroms]
+    
     if (length(candtgts) == 0) {
-      msg = paste0('Only ', i, '/', andedges, ' could be created')
-      warning(msg)
-      break
+      if (nfroms == 2) {
+        msg = paste0('Only ', round(pAnd, digits = 2), '/', propand,
+                     ' AND edges could be created')
+        warning(msg)
+        break
+      } else{
+        nfroms = nfroms - 1
+        #change probalilities
+        andprobs[andsize > nfroms] = 0
+        andprobs = andprobs / sum(andprobs)
+        next
+      }
     }
     toNode = sample(candtgts, 1)
 
-    #sample 2 OR edges to combine
-    inedges = getNode(grn, toNode)$inedges
+    #sample nfrom(2) OR edges to combine
+    inedges = edgeset[getNode(grn, toNode)$inedges]
     inedges = inedges[sapply(inedges, is, 'EdgeOr')]
-    fromNodes = sapply(sample(inedges, 2), function (x) x$from[[1]]$name)
+    fromNodes = sapply(sample(inedges, nfroms), function (x) x$from)
 
     #convert OR to AND edge
     grn = mergeOr(grn, fromNodes, toNode, 1)
-    nodesin[toNode] = nodesin[toNode] - 2
+    nodesin[toNode] = nodesin[toNode] - nfroms
+    
+    #calculate proportions
+    pAnd = sum(sapply(grn@edgeset, is, 'EdgeAnd')) / length(grn@edgeset)
+    nfroms = sample(andsize, 1, prob = andprobs)
   }
   
   return(grn)

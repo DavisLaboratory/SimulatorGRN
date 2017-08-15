@@ -3,11 +3,10 @@ setClass(
 	Class = 'SimulationGRN',
 	slots = list(
 		graph = 'GraphGRN',
-		externalInputs = 'numeric',
 		noiseL = 'numeric',
 		noiseG = 'numeric',
 		seed = 'numeric',
-		solution = 'list'
+		inputModels = 'list'
 	)
 )
 
@@ -29,23 +28,6 @@ setMethod(
 		cat('Local noise ratio:', object@noiseL, '\n')
 		cat('Global noise ratio:', object@noiseG, '\n')
 		cat('Randomization seed:', object@seed, '\n')
-		
-		#external inputs and solution print
-		ext = round(object@externalInputs, digits = 2)
-		soln = round(object$solution, digits = 2)
-		if (length(ext) > mxp){
-			ext = ext[1:mxp]
-			ext = c(ext, '...' = paste0('...'))
-		}
-		if (length(soln) > mxp){
-			soln = soln[1:mxp]
-			soln = c(soln, '...' = '...')
-		}
-		
-		cat(paste0('External Inputs (', length(object@externalInputs),' nodes):'), '\n')
-		print(ext, quote = F)
-		cat(paste0('Solution (', length(object$solution),' nodes):'), '\n')
-		print(soln, quote = F)
 	}
 )
 
@@ -70,36 +52,38 @@ setMethod(
 	f = '$<-',
 	signature = 'SimulationGRN',
 	definition = function(x, name, value) {
-		if(name %in% 'solution'){
-			stop('Steady state solution cannot be modified directly')
-		}
-		
 		slot(x, name)<-value
-		if(name %in% 'externalInputs'){
-			x@solution = solveSteadyState(x)
-		}
-		
 		validObject(x)
 		return(x)
 	}
 )
 
-#----SimulationGRN: diagnostics----
+#----SimulationGRN: generateInputModels----
 setGeneric(
-  name = 'diagnostics',
+  name = 'generateInputModels',
   def = function(simulation) {
-    standardGeneric('diagnostics')
+    standardGeneric('generateInputModels')
   }
 )
 
 setMethod(
-  f = 'diagnostics',
+  f = 'generateInputModels',
   signature = c('SimulationGRN'),
-  definition = function(simulation){
-    cat('Diagnostics from the solver: ', 'nleqslv', '\n')
-    cat('Use ?nleqslv to understand the results', '\n\n')
-    return(simulation@solution)
+  definition = createInputModels
+)
+
+#----SimulationGRN: simulateDataset----
+setGeneric(
+  name = 'simulateDataset',
+  def = function(simulation, numsamples, externalInputs) {
+    standardGeneric('simulateDataset')
   }
+)
+
+setMethod(
+  f = 'simulateDataset',
+  signature = c('SimulationGRN', 'numeric', 'missing'),
+  definition = simDataset
 )
 
 

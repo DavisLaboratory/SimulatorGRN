@@ -15,43 +15,42 @@ validSimulationGRN <- function(object) {
 		stop('Global noise ratio must be between 0 and 1')
 	}
 	
-	#external inputs
-	if (is.null(names(object@externalInputs)) |
-		!all(names(object@externalInputs) %in% getInputNodes(object@graph))) {
-		stop('Invalid external inputs vector, named vector expected')
-	}
-	
 	return(TRUE)
 }
 
-initSimulationGRN <- function(.Object, ..., graph, externalInputs, noiseL = 0, noiseG = 0, seed = sample.int(1e6,1)) {
-	if(missing(externalInputs)){
-		inputNodes = getInputNodes(graph)
-		externalInputs = numeric(length(inputNodes)) + 0.5
-		names(externalInputs) = inputNodes
-	}
-	
+initSimulationGRN <- function(.Object, ..., graph, noiseL = 0, noiseG = 0, seed = sample.int(1e6,1), inputModels = list()) {
 	.Object@graph = graph
 	.Object@noiseL = noiseL
 	.Object@noiseG = noiseG
 	.Object@seed = seed
-	.Object@externalInputs = externalInputs
-	.Object@solution = solveSteadyState(.Object)
+	.Object@inputModels = inputModels
+	
+	if (length(inputModels) == 0) {
+	  .Object = generateInputModels(.Object)
+	}
 	
 	validObject(.Object)
 	return(.Object)
 }
 
-solveSteadyState <- function(object) {
+solveSteadyState <- function(object, externalInputs) {
+  #external inputs
+  if (is.null(names(externalInputs)) |
+      !all(names(externalInputs) %in% getInputNodes(object@graph))) {
+    stop('Invalid external inputs vector, named vector expected for ALL input nodes')
+  }
+  
   #set random seed
   set.seed(object@seed)
   
   #solve ODE
 	ode = generateODE(object@graph)
-	ext = object@externalInputs
+	ext = externalInputs
 	graph = object@graph
 	nodes = setdiff(nodenames(graph), names(ext))
-	exprs = runif(length(nodes))
+	exprs = rnorm(length(nodes), mean = 0.5, sd = 0.3 / 3) #3sd = 0.3 range
+	exprs[exprs < 0] = 0
+	exprs[exprs > 1] = 1
 	names(exprs) = nodes
 	
 	soln = nleqslv(exprs, ode, jac = NULL, ext)
@@ -61,6 +60,75 @@ solveSteadyState <- function(object) {
 	  warning('Solution not achieved. use \'diagnostics(simulation)\' to get details')
 	}
 	return(soln)
+}
+
+createInputModels <- function(simulation) {
+  set.seed(simulation@seed)
+  
+  #create input models
+  innodes = getInputNodes(simulation@graph)
+  inmodels = list()
+  
+  for (n in innodes) {
+    parms = list()
+    mxs = sample(c(1, 2), 1, prob = c(0.9, 0.1))
+    
+    if (mxs == 2) {
+      parms = c(parms, 'prop' = runif(1, 0.2, 0.8))
+      parms$prop = c(parms$prop, 1 - parms$prop)
+    } else {
+      parms$prop = 1
+    }
+    
+    parms$mean = runif(mxs, 0.1, 0.9)
+    maxsd = pmin(parms$mean, 1 - parms$mean) / 3
+    parms$sd = sapply(maxsd, function(x) runif(1, 0.01, x))
+    inmodels = c(inmodels, list(parms))
+  }
+  
+  names(inmodels) = innodes
+  simulation@inputModels = inmodels
+  
+  return(simulation)
+}
+
+simDataset <- function(simulation, numsamples, externalInputs) {
+  set.seed(simulation@seed)
+  
+  #generate input matrix
+  innodes = getInputNodes(simulation@graph)
+  externalInputs = matrix(-1,nrow = numsamples, ncol = length(innodes))
+  colnames(externalInputs) = innodes
+  
+  #create input models
+  if (length(simulation@inputModels) == 0) {
+    simulation = generateInputModels(simulation)
+  }
+  
+  #simulate external inputs
+  inmodels = simulation@inputModels
+  for (n in innodes) {
+    m = inmodels[[n]]
+    mix = sample(1:length(m$prop), prob = m$prop, replace = T)
+    
+    outbounds = 1
+    while (sum(outbounds) > 0){
+      outbounds = externalInputs[ , n] < 0 | externalInputs[ , n] > 1
+      externalInputs[outbounds & mix == 1, n] = rnorm(sum(outbounds & mix == 1), m$mean[1], m$sd[1])
+      if (length(m$prop) > 1) {
+        externalInputs[outbounds & mix == 2, n] = rnorm(sum(outbounds & mix == 2), m$mean[2], m$sd[2])
+      }
+    }
+  }
+  
+  #solve ODEs for different inputs
+  emat = c()
+  for (i in 1:numsamples) {
+    soln = solveSteadyState(simulation, externalInputs[i, ])
+    emat = cbind(emat, soln$x)
+  }
+  
+  return(emat)
 }
 
 
