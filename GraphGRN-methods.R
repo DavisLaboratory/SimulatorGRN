@@ -513,9 +513,15 @@ subsetGraph <- function(graph, snodes) {
   return(graph)
 }
 
-sampleSubNetwork <- function(graph, size, k, seed) {
+sampleSubNetwork <- function(graph, size, minregs, k, seed) {
+  #identify regulators
+  regs = rowSums(getAM(graph))
+  regs = names(regs)[regs > 0]
+  
   #get the adjacency matrix for the graph
   A = getAM(graph, directed = F)
+  hdegree = rowSums(A)
+  hdegree = names(hdegree)[hdegree > 1]
   
   #calculate total number of edges
   m = sum(diag(A)) + sum(A[upper.tri(A)])
@@ -535,6 +541,21 @@ sampleSubNetwork <- function(graph, size, k, seed) {
   for (i in 2:size) {
     #find neighbours
     neighbours = which(colSums(A[s > 0, , drop = F]) > 0 & s < 0)
+    
+    #sample the minimum number of regulators required
+    if (minregs > 0) {
+      newn = intersect(names(neighbours), regs)
+      newnhdeg = intersect(names(neighbours), hdegree)
+      
+      if (length(newn) != 0) {
+        neighbours = neighbours[newn]
+        minregs = minregs - 1
+      } else if (length(newnhdeg) != 0) {
+        #favour higher degree neighbours to improve chances of hitting a reg
+        neighbours = neighbours[newnhdeg]
+      }
+    }
+    
     if (length(neighbours) == 0) {
       s[sample(which(s < 0), 1)] = 1
       next

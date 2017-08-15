@@ -635,21 +635,23 @@ setMethod(
 #----GraphGRN: sampleGraph----
 setGeneric(
   name = 'sampleGraph',
-  def = function(graph, size, k, seed) {
+  def = function(graph, size, minregs, k, seed) {
     standardGeneric('sampleGraph')
   }
 )
 
 setMethod(
   f = 'sampleGraph',
-  signature = c('GraphGRN', 'numeric', 'ANY', 'ANY'),
-  definition = function(graph, size, k, seed){
+  signature = c('GraphGRN', 'numeric', 'ANY', 'ANY', 'ANY'),
+  definition = function(graph, size, minregs, k, seed){
     if (missing(k))
       k = 0.25
     if (missing(seed))
       seed = sample.int(1E6, 1)
+    if (missing(minregs))
+      minregs = 0
     
-    snodes = sampleSubNetwork(graph, size, k, seed)
+    snodes = sampleSubNetwork(graph, size, minregs, k, seed)
     subgraph = getSubGraph(graph, snodes)
     return(subgraph)
   }

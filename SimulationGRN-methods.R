@@ -71,7 +71,7 @@ createInputModels <- function(simulation) {
   
   for (n in innodes) {
     parms = list()
-    mxs = sample(c(1, 2), 1, prob = c(0.9, 0.1))
+    mxs = sample(c(1, 2), 1, prob = c(0.7, 0.3))
     
     if (mxs == 2) {
       parms = c(parms, 'prop' = runif(1, 0.2, 0.8))
@@ -123,9 +123,23 @@ simDataset <- function(simulation, numsamples, externalInputs) {
   
   #solve ODEs for different inputs
   emat = c()
+  termcd = c()
   for (i in 1:numsamples) {
     soln = solveSteadyState(simulation, externalInputs[i, ])
     emat = cbind(emat, soln$x)
+    termcd = c(termcd, soln$termcd)
+  }
+  emat = rbind(emat, t(externalInputs))
+  colnames(emat) = paste0('sample', 1:numsamples)
+  
+  #check for errors
+  if (!all(termcd == 1)) {
+    nc = termcd != 1
+    msg = 'Simulations for the following samples did not converge:'
+    sampleids = paste(colnames(emat)[nc], ' (', termcd[nc], ')', sep = '')
+    msg = paste(c(msg, sampleids), collapse = '\n\t')
+    msg = paste(msg, 'format: sampleid (termination condition)', sep = '\n\n\t')
+    warning(msg)
   }
   
   return(emat)
