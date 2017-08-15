@@ -473,7 +473,7 @@ setMethod(
 	signature = c('GraphGRN', 'character', 'character'),
 	definition = function(graph, from, to) {
 		#generate name
-		edgename = paste(from, collapse = '')
+		edgename = paste(sort(from), collapse = '')
 		edgename = paste(edgename, to, sep = '->')
 		
 		edgeObj = graph@edgeset[[edgename]]
@@ -486,7 +486,7 @@ setReplaceMethod(
 	signature = c('GraphGRN', 'character', 'character', 'Edge'),
 	definition = function(graph, from, to, value) {
 		#generate name
-		edgename = paste(from, collapse = '')
+		edgename = paste(sort(from), collapse = '')
 		edgename = paste(edgename, to, sep = '->')
 		
 		graph@edgeset[[edgename]] = value

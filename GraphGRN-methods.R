@@ -136,7 +136,7 @@ initEdgeOr <- function(.Object, ..., from, to, weight = 1, EC50 = 0.5, n = 1.39,
   .Object@activation = activation
   
   #generate name
-  name = paste(from, collapse = '')
+  name = paste(sort(from), collapse = '')
   name = paste(name, to, sep = '->')
   .Object@name = name
   
@@ -206,7 +206,7 @@ initEdgeAnd <- function(.Object, ..., from, to, weight = 1, EC50 = c(), n = c(),
 	.Object@activation = activation
 	
 	#generate name
-	name = paste(from, collapse = '')
+	name = paste(sort(from), collapse = '')
 	name = paste(name, to, sep = '->')
 	.Object@name = name
 	
@@ -446,7 +446,7 @@ orToAnd <- function(graph, from, to, weight) {
   if (length(from) < 2)
     stop('Need 2 or more edges to merge into an AND edge')
   
-  edgenames = paste(from, to, sep = '->')
+  edgenames = paste(sort(from), to, sep = '->')
   if (any(!edgenames %in% names(graph@edgeset))) {
     stop('Edges not found: ', paste(setdiff(edgenames, names(graph@edgeset)), collapse = ', '))
   }
@@ -578,7 +578,7 @@ getAMC <- function(graph, directed = T) {
 }
 
 #----GraphGRN: Conversion functions----
-dfToGraphGRN <- function(edges, nodes, propand = 0.3, loops = F, seed = sample.int(1E6, 1)) {
+df2GraphGRN <- function(edges, nodes, propand = 0.3, loops = F, seed = sample.int(1E6, 1)) {
   if (missing(nodes) || is.null(nodes)) {
     nodes = data.frame('node' = unique(c(edges[ , 1], edges[ , 3])), stringsAsFactors = F)
   }
@@ -659,6 +659,68 @@ dfToGraphGRN <- function(edges, nodes, propand = 0.3, loops = F, seed = sample.i
   }
   
   return(grn)
+}
+
+GraphGRN2df <- function(graph) {
+  nodes = graph@nodeset
+  edges = graph@edgeset
+  
+  #create node df
+  nodedf = data.frame('name' = names(nodes), stringsAsFactors = F)
+  nodedf$rnamax = sapply(nodes, slot, 'spmax')
+  nodedf$rnadeg = sapply(nodes, slot, 'spdeg')
+  nodedf$tau = sapply(nodes, slot, 'tau')
+  nodedf$type = 'or'
+  
+  #create edge df
+  #convert oredges
+  oredges = edges[sapply(edges, is, 'EdgeOr')]
+  edgedf = data.frame('from' = sapply(oredges, slot, 'from'), stringsAsFactors = F)
+  edgedf$type = sapply(oredges, slot, 'activation')
+  edgedf$to = sapply(oredges, slot, 'to')
+  edgedf$weight = sapply(oredges, slot, 'weight')
+  edgedf$EC50 = sapply(oredges, slot, 'EC50')
+  edgedf$n = sapply(oredges, slot, 'n')
+  
+  #convert andedges
+  andedges = edges[sapply(edges, is, 'EdgeAnd')]
+  andedgem = c()
+  andnodem = c()
+  for (e in andedges) {
+    es = c()
+    newnode = paste(sort(e$from), collapse = '')
+    andnodem = c(andnodem, newnode)
+    
+    #from to intermediate
+    es = cbind(e$from, e$activation, newnode, NA, e$EC50, e$n)
+    
+    #intermediate
+    es = rbind(es, c(newnode, T, e$to, e$weight, NA, NA))
+    andedgem = rbind(andedgem, es)
+  }
+  
+  colnames(andedgem) = colnames(edgedf)
+  edgedf = rbind(edgedf, andedgem)
+  
+  andnodem = cbind(andnodem, NA, NA, NA, 'and')
+  colnames(andnodem) = colnames(nodedf)
+  nodedf = rbind(nodedf, andnodem)
+  
+  #convert types
+  for (i in 2:4){
+    nodedf[ , i] = as.numeric(nodedf[ , i])
+  }
+  
+  for (i in 4:6){
+    edgedf[ , i] = as.numeric(edgedf[ , i])
+  }
+  
+  #create list of results
+  rownames(nodedf) = NULL
+  rownames(edgedf) = NULL
+  dflist = list('nodes' = nodedf, 'edges' = edgedf)
+  
+  return(dflist)
 }
 
 #----All classes----
