@@ -696,7 +696,11 @@ GraphGRN2df <- function(graph) {
   #create edge df
   #convert oredges
   oredges = edges[sapply(edges, is, 'EdgeOr')]
-  edgedf = data.frame('from' = sapply(oredges, slot, 'from'), stringsAsFactors = F)
+  if (length(oredges) == 0) {
+    edgedf = data.frame('from' = as.numeric(), stringsAsFactors = F)
+  } else{
+    edgedf = data.frame('from' = sapply(oredges, slot, 'from'), stringsAsFactors = F)
+  }
   edgedf$type = sapply(oredges, slot, 'activation')
   edgedf$to = sapply(oredges, slot, 'to')
   edgedf$weight = sapply(oredges, slot, 'weight')
@@ -705,27 +709,29 @@ GraphGRN2df <- function(graph) {
   
   #convert andedges
   andedges = edges[sapply(edges, is, 'EdgeAnd')]
-  andedgem = c()
-  andnodem = c()
-  for (e in andedges) {
-    es = c()
-    newnode = paste(sort(e$from), collapse = '')
-    andnodem = c(andnodem, newnode)
+  if (length(andedges) > 0){
+    andedgem = c()
+    andnodem = c()
+    for (e in andedges) {
+      es = c()
+      newnode = paste(sort(e$from), collapse = '')
+      andnodem = c(andnodem, newnode)
+      
+      #from to intermediate
+      es = cbind(e$from, e$activation, newnode, NA, e$EC50, e$n)
+      
+      #intermediate
+      es = rbind(es, c(newnode, T, e$to, e$weight, NA, NA))
+      andedgem = rbind(andedgem, es)
+    }
     
-    #from to intermediate
-    es = cbind(e$from, e$activation, newnode, NA, e$EC50, e$n)
+    colnames(andedgem) = colnames(edgedf)
+    edgedf = rbind(edgedf, andedgem)
     
-    #intermediate
-    es = rbind(es, c(newnode, T, e$to, e$weight, NA, NA))
-    andedgem = rbind(andedgem, es)
+    andnodem = cbind(unique(andnodem), NA, NA, NA, 'and')
+    colnames(andnodem) = colnames(nodedf)
+    nodedf = rbind(nodedf, andnodem)
   }
-  
-  colnames(andedgem) = colnames(edgedf)
-  edgedf = rbind(edgedf, andedgem)
-  
-  andnodem = cbind(andnodem, NA, NA, NA, 'and')
-  colnames(andnodem) = colnames(nodedf)
-  nodedf = rbind(nodedf, andnodem)
   
   #convert types
   for (i in 2:4){
@@ -739,6 +745,7 @@ GraphGRN2df <- function(graph) {
   #create list of results
   rownames(nodedf) = NULL
   rownames(edgedf) = NULL
+  edgedf = edgedf[ , c(1, 3, 2, 4:ncol(edgedf))]
   dflist = list('nodes' = nodedf, 'edges' = edgedf)
   
   return(dflist)
