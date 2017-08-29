@@ -97,26 +97,34 @@ simDataset <- function(simulation, numsamples, externalInputs) {
   
   #generate input matrix
   innodes = getInputNodes(simulation@graph)
-  externalInputs = matrix(-1,nrow = numsamples, ncol = length(innodes))
-  colnames(externalInputs) = innodes
-  
-  #create input models
-  if (length(simulation@inputModels) == 0) {
-    simulation = generateInputModels(simulation)
-  }
-  
-  #simulate external inputs
-  inmodels = simulation@inputModels
-  for (n in innodes) {
-    m = inmodels[[n]]
-    mix = sample(1:length(m$prop), prob = m$prop, replace = T)
+  if (!missing(externalInputs) && !is.null(externalInputs)) {
+    if (nrow(externalInputs) != numsamples |
+        length(setdiff(innodes, colnames(externalInputs))) != 0) {
+          stop('Invalid externalInputs matrix provided')
+    }
+    externalInputs = externalInputs[, innodes]
+  } else{
+    externalInputs = matrix(-1,nrow = numsamples, ncol = length(innodes))
+    colnames(externalInputs) = innodes
     
-    outbounds = 1
-    while (sum(outbounds) > 0){
-      outbounds = externalInputs[ , n] < 0 | externalInputs[ , n] > 1
-      externalInputs[outbounds & mix == 1, n] = rnorm(sum(outbounds & mix == 1), m$mean[1], m$sd[1])
-      if (length(m$prop) > 1) {
-        externalInputs[outbounds & mix == 2, n] = rnorm(sum(outbounds & mix == 2), m$mean[2], m$sd[2])
+    #create input models
+    if (length(simulation@inputModels) == 0) {
+      simulation = generateInputModels(simulation)
+    }
+    
+    #simulate external inputs
+    inmodels = simulation@inputModels
+    for (n in innodes) {
+      m = inmodels[[n]]
+      mix = sample(1:length(m$prop), numsamples, prob = m$prop, replace = T)
+      
+      outbounds = 1
+      while (sum(outbounds) > 0){
+        outbounds = externalInputs[ , n] < 0 | externalInputs[ , n] > 1
+        externalInputs[outbounds & mix == 1, n] = rnorm(sum(outbounds & mix == 1), m$mean[1], m$sd[1])
+        if (length(m$prop) > 1) {
+          externalInputs[outbounds & mix == 2, n] = rnorm(sum(outbounds & mix == 2), m$mean[2], m$sd[2])
+        }
       }
     }
   }

@@ -15,12 +15,17 @@ source('../GraphGRN-methods.R')
 source('../GraphGRN.R')
 source('../SimulationGRN-methods.R')
 source('../SimulationGRN.R')
+source('analysis_methods.R')
 library(igraph)
 library(ggplot2)
+library(plotly)
 library(grid)
 library(ggraph)
 library(deSolve)
 library(foreach)
+library(nleqslv)
+library(mclust)
+library(shiny)
 
 #activation function
 fAct <- function(TF, EC50 = 0.5, n = 1.39) {
@@ -328,6 +333,8 @@ multiplot(p1, p2, cols = 2)
 
 #OR with different act/inhib effect further investigation
 
+![Lac operon regulation](`r file.path(getwd(), 'lac_operon_repression.PNG')`){width=70%}
+
 ```{r, echo=FALSE, message=FALSE, warning=FALSE}
 igraph_options(plot.layout=layout_as_star)
 par(mfrow = c(1, 2))
@@ -335,11 +342,11 @@ colmap = c('TRUE' = 'green', 'FALSE' = 'red')
 
 #1 activator 1 inhibitor OR
 gor = new('GraphGRN')
-for (n in LETTERS[1:3]) {
+for (n in c('LacRepressor', 'LacXYA', 'lactose')) {
   gor = addNode(gor, n)
 }
-gor = addEdge(gor, 'A', 'C', activation = T)
-gor = addEdge(gor, 'B', 'C', activation = F)
+gor = addEdge(gor, 'LacRepressor', 'LacXYA', activation = F)
+gor = addEdge(gor, 'lactose', 'LacXYA', activation = T)
 
 gdf = GraphGRN2df(gor)
 ig = graph_from_data_frame(gdf$edges, directed = T, gdf$nodes)
@@ -349,32 +356,290 @@ plot(ig, vertex.size = nsize, main = '1 act 1 inhib independent')
 #activation function plots
 f = function(t, state, params) {
   with(as.list(c(state, params)), {
-    list('C' = eval(parse(text = generateRateEqn(getNode(gor, 'C'), gor))))
+    list('LacXYA' = eval(parse(text = generateRateEqn(getNode(gor, 'LacXYA'), gor))))
   })
 }
 
-#plot C with varying amounts of B and fixed A
-s0 = c('C' = 0.5)
-parms = c('A' = 0.3, 'B' = 0)
+#plot LacXYA with varying amounts of lactose and fixed LacRepressor
+s0 = c('LacXYA' = 0.5)
+parms = c('LacRepressor' = 0.7, 'lactose' = 0)
 times = seq(0, 5, by = 0.01)
 
 res = foreach (i = seq(0, 1, by = 0.1), .packages = c('deSolve'), .combine = rbind) %do% {
-  parms['B'] = i
+  parms['lactose'] = i
   out = ode(y = s0, times = times, func = f, parms = parms)[ , 2]
-  out = cbind('C' = out, 'B' = i, 't' = times)
+  out = cbind('LacXYA' = out, 'lactose' = i, 't' = times)
   return(out)
 }
 
 pdata = as.data.frame(res)
-colmap = colorRampPalette(c('yellow', 'orange', 'red'))(length(unique(res[,'B'])))
-names(colmap) = unique(res[,'B'])
-pdata$B = as.factor(pdata$B)
+colmap = colorRampPalette(c('yellow', 'orange', 'red'))(length(unique(res[,'lactose'])))
+names(colmap) = unique(res[,'lactose'])
+pdata$lactose = as.factor(pdata$lactose)
 
-ggplot(pdata, aes(t, C, colour = B)) + geom_line(size = 1.2)+
+p1 = ggplot(pdata, aes(t, LacXYA, colour = lactose)) + geom_line(size = 1.2)+
   scale_colour_manual(values = colmap) +
-  ggtitle('A = 0.3 (fixed), B=[0,1]')
+  ggtitle('LacRepressor = 0.7 (fixed),\n lactose = [0,1]')
 
+#plot LacXYA with varying amounts of LacRepressor and fixed lactose
+s0 = c('LacXYA' = 0.5)
+parms = c('LacRepressor' = 0, 'lactose' = 0.7)
+times = seq(0, 5, by = 0.01)
+
+res = foreach (i = seq(0, 1, by = 0.1), .packages = c('deSolve'), .combine = rbind) %do% {
+  parms['LacRepressor'] = i
+  out = ode(y = s0, times = times, func = f, parms = parms)[ , 2]
+  out = cbind('LacXYA' = out, 'LacRepressor' = i, 't' = times)
+  return(out)
+}
+
+pdata = as.data.frame(res)
+colmap = colorRampPalette(c('yellow', 'orange', 'red'))(length(unique(res[,'LacRepressor'])))
+names(colmap) = unique(res[,'LacRepressor'])
+pdata$LacRepressor = as.factor(pdata$LacRepressor)
+
+p2 = ggplot(pdata, aes(t, LacXYA, colour = LacRepressor)) + geom_line(size = 1.2)+
+  scale_colour_manual(values = colmap) +
+  ggtitle('LacRepressor = [0,1],\n lactose = 0.7 (fixed)')
+multiplot(p1, p2, cols = 2)
 ```
+
+#Generalization of complex regulatory behaviour
+A represses C with the corepressor L. X inhibits this repression.
+
+x-axis is L
+
+y-axis is X
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+#1 activator 1 inhibitor OR
+gor = new('GraphGRN')
+for (n in c('A','C','L','X')) {
+  gor = addNode(gor, n)
+}
+gor = addEdge(gor, 'A', 'C', activation = F)
+gor = addEdge(gor, 'X', 'C', activation = T)
+gor = addEdge(gor, 'L', 'C', activation = F)
+
+#activation function
+f = function(A, L, X) {
+  C = 0
+  eval(parse(text = generateRateEqn(getNode(gor, 'C'), gor)))
+}
+
+A = seq(0, 1, by = 0.01)
+L = seq(0, 1, by = 0.01)
+X = seq(0, 1, by = 0.01)
+
+C = f(A, L, X)
+hmdf = expand.grid('L' = seq(0, 1, by = 0.01), 'X' = seq(0, 1, by = 0.01))
+hmdf$C = f(0.1, hmdf$L, hmdf$X)
+
+#plotly slider
+aval = list()
+nsteps = 11
+for (i in 1:nsteps){
+  hmdf = expand.grid('L' = seq(0, 1, by = 0.01), 'X' = seq(0, 1, by = 0.01))
+  A = i/nsteps
+  aval[[i]] <-list(visible = FALSE,
+                      name = round(A, digits = 2),
+                      x = hmdf$L,
+                      y = hmdf$X,
+                      z = f(A, hmdf$L, hmdf$X))
+  
+  aval[i][[1]]$z[1] = 0
+}
+aval[1][[1]]$visible = TRUE
+
+steps <- list()
+p <- plot_ly(xaxis = list(title = 'L'), yaxis = list(title = 'X'))
+for (i in 1:nsteps) {
+  p = add_heatmap(p,x=aval[i][[1]]$x,  y=aval[i][[1]]$y, z=aval[i][[1]]$z, visible = aval[i][[1]]$visible, 
+                 name = aval[i][[1]]$name, showlegend = FALSE)
+
+  step <- list(args = list('visible', rep(FALSE, length(aval))),
+               method = 'restyle')
+  step$args[[2]][i] = TRUE  
+  steps[[i]] = step 
+}
+
+p = p %>%
+  layout(sliders = list(list(active = 1,
+                             currentvalue = list(prefix = "A: "),
+                             steps = steps)))
+p
+```
+
+#Conditional dependence
+```{r, message=FALSE, warning=FALSE, include=FALSE}
+plotds <- function(d, ptitle, rteqn){
+  plotd = as.data.frame(t(d))
+  cors = cor(plotd)
+  cors = round(cors, digits = 2)
+  #score calculation
+  classf = Mclust(d['B',], verbose = F)$classification
+  #calc cors
+  corlowB = round(cor(plotd[classf == 1, 1:2])[1, 2], digits = 2)
+  corhighB = round(cor(plotd[classf == 2, 1:2])[1, 2], digits = 2)
+  classf[classf == 1] = paste('low B (', corlowB, ')', sep = '')
+  classf[classf == 2] = paste('high B (', corhighB, ')', sep = '')
+  plotd$B = classf
+  
+  p1 = ggplot(plotd, aes(A, C)) + geom_point() +
+    scale_colour_distiller(palette = 'RdPu', direction = 1) +
+    ggtitle(paste(ptitle, ' (cor = ', cors['A', 'C'], ')', sep = '')) +
+    facet_wrap(~B) +
+    theme_minimal() +
+    theme(
+      panel.grid.minor = element_blank(),
+      axis.line = element_line(colour="black"),
+      strip.background=element_rect(colour="#f0f0f0",fill="#f0f0f0")
+    )
+  
+  #activation function plots
+  f = function(A, B, rateeqn) {
+    C = 0
+    eval(parse(text = rateeqn))
+  }
+  
+  #plot activation functions
+  plotd = as.data.frame(t(d))
+  pdata = expand.grid('A' = seq(0, 1, length.out = 100), 'B' = seq(0, 1, length.out = 100))
+  pdata['Activation'] = f(pdata$A, pdata$B, rteqn)
+  plotd$Activation = 1
+  
+  p2 = ggplot(pdata, aes(A, B, fill = Activation)) +
+    geom_raster() +
+    scale_fill_distiller(palette = 'YlOrRd', direction = 1) +
+    ggtitle('1 act 1 inhib dependent') +
+    theme_minimal() +
+    theme(
+      panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank(),
+      legend.position = 'none'
+    ) +
+    geom_point(data = plotd, aes(A, B), colour = 'white', alpha = 0.2, size = 2)
+  
+  multiplot(p1, p2, cols = 2)
+}
+
+simseed = 360
+nsamp = 100
+```
+
+Input models setting
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+g = new('GraphGRN')
+for (n in c('B', 'A' ,'C')) {
+  g = addNode(g, n)
+}
+g = addEdge(g, 'B', 'C', activation = T)
+g = addEdge(g, 'A', 'C', activation = T)
+
+sim = new('SimulationGRN', graph = g, seed = simseed)
+inputModels = sim$inputModels
+
+#model modification
+inputModels$B$mean = c(0.2, 0.8)
+inputModels$A$mean = 0.5
+inputModels$A$sd = 0.15
+inputModels$B$sd = c(0.05, 0.05)
+sim$inputModels = inputModels
+
+#plot densities of inputs
+set.seed(simseed)
+# extinputs = matrix(runif(nsamp * 2), ncol = 2)
+# colnames(extinputs) = c('A', 'B')
+extinputs = NULL
+d = simulateDataset(sim, nsamp, extinputs)
+
+plotd = as.data.frame(t(d))
+cors = cor(plotd)
+cors = round(cors, digits = 2)
+
+histd = data.frame('Expr' = c(plotd$A, plotd$B), 'Gene' = rep(c('A', 'B'), each = nrow(plotd)))
+ggplot(histd, aes(Expr, fill = Gene)) + geom_histogram(alpha = 0.7, position = 'identity') +
+ggtitle(paste('Input data', ' (cor = ', cors['A', 'B'], ')', sep = '')) +
+theme_minimal() +
+theme(
+  panel.grid.major = element_blank(),
+  panel.grid.minor = element_blank()
+  )
+
+#2 activators OR
+g = new('GraphGRN')
+for (n in LETTERS[1:3]) {
+  g = addNode(g, n)
+}
+g = addEdge(g, 'A', 'C', activation = T)
+g = addEdge(g, 'B', 'C', activation = T)
+sim = new('SimulationGRN', graph = g, seed = simseed)
+sim$inputModels = inputModels
+d = simulateDataset(sim, nsamp)
+plotds(d, 'A OR B', generateRateEqn(getNode(g, 'C'), g))
+
+#2 repressors OR
+g = new('GraphGRN')
+for (n in LETTERS[1:3]) {
+  g = addNode(g, n)
+}
+g = addEdge(g, 'A', 'C', activation = F)
+g = addEdge(g, 'B', 'C', activation = F)
+sim = new('SimulationGRN', graph = g, seed = simseed)
+sim$inputModels = inputModels
+d = simulateDataset(sim, nsamp)
+plotds(d, '!A OR !B', generateRateEqn(getNode(g, 'C'), g))
+
+#1 repressor, 1 Activator OR
+g = new('GraphGRN')
+for (n in LETTERS[1:3]) {
+  g = addNode(g, n)
+}
+g = addEdge(g, 'A', 'C', activation = F)
+g = addEdge(g, 'B', 'C', activation = T)
+sim = new('SimulationGRN', graph = g, seed = simseed)
+sim$inputModels = inputModels
+d = simulateDataset(sim, nsamp)
+plotds(d, '!A OR B', generateRateEqn(getNode(g, 'C'), g))
+
+#2 activators AND
+g = new('GraphGRN')
+for (n in LETTERS[1:3]) {
+  g = addNode(g, n)
+}
+g = addEdge(g, c('A', 'B'), 'C', activation = c(T, T), edgetype = 'and')
+sim = new('SimulationGRN', graph = g, seed = simseed)
+sim$inputModels = inputModels
+d = simulateDataset(sim, nsamp)
+plotds(d, 'A AND B', generateRateEqn(getNode(g, 'C'), g))
+
+#2 repressors AND
+g = new('GraphGRN')
+for (n in LETTERS[1:3]) {
+  g = addNode(g, n)
+}
+g = addEdge(g, c('A', 'B'), 'C', activation = c(F, F), edgetype = 'and')
+sim = new('SimulationGRN', graph = g, seed = simseed)
+sim$inputModels = inputModels
+d = simulateDataset(sim, nsamp)
+plotds(d, '!A AND !B', generateRateEqn(getNode(g, 'C'), g))
+
+#1 repressor, 1 Activator AND
+g = new('GraphGRN')
+for (n in LETTERS[1:3]) {
+  g = addNode(g, n)
+}
+g = addEdge(g, c('A', 'B'), 'C', activation = c(T, F), edgetype = 'and')
+sim = new('SimulationGRN', graph = g, seed = simseed)
+sim$inputModels = inputModels
+d = simulateDataset(sim, nsamp)
+plotds(d, 'A AND !B', generateRateEqn(getNode(g, 'C'), g))
+```
+
+
+
+
+
+
 
 
 

@@ -86,5 +86,11 @@ setMethod(
   definition = simDataset
 )
 
+setMethod(
+  f = 'simulateDataset',
+  signature = c('SimulationGRN', 'numeric', 'ANY'),
+  definition = simDataset
+)
+
 
 
