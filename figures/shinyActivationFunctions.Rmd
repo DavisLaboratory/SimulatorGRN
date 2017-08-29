@@ -141,13 +141,13 @@ inputPanel(
   sliderInput('b1mean', label = 'Mean of mixture 1 of B:',
               min = 0.2, max = 0.8, step = 0.1, value = 0.2),
   sliderInput('b2mean', label = 'Mean of mixture 2 of B:',
-              min = 0.2, max = 0.8, step = 0.1, value = 0.8),
+              min = 0.2, max = 0.8, step = 0.1, value = 0.6),
   sliderInput('bvar', label = 'Variance of B:',
               min = 0.05, max = 0.3, step = 0.05, value = 0.05),
   sliderInput('amean', label = 'Mean of A:',
-              min = 0.2, max = 0.8, step = 0.1, value = 0.5),
+              min = 0.2, max = 0.8, step = 0.1, value = 0.8),
   sliderInput('avar', label = 'Variance of A:',
-              min = 0.05, max = 0.3, step = 0.05, value = 0.15),
+              min = 0.05, max = 0.3, step = 0.05, value = 0.1),
   selectInput('type', label = 'Interaction type:',
               choices = c('A OR B', '!A OR !B', '!A OR B', 'A AND B', '!A AND !B', 'A AND !B'), selected = 'A OR B')
 )
