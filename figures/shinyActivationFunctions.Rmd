@@ -78,7 +78,7 @@ nsize = 40
 
 #Conditional dependence
 ```{r, echo=FALSE}
-plotds <- function(d, ptitle, rteqn){
+plotds <- function(d, ptitle, rteqn, histoplot){
   plotd = as.data.frame(t(d))
   cors = cor(plotd)
   cors = round(cors, digits = 2)
@@ -126,7 +126,8 @@ plotds <- function(d, ptitle, rteqn){
     ) +
     geom_point(data = plotd, aes(A, B), colour = 'white', alpha = 0.2, size = 2)
   
-  multiplot(p1, p2, cols = 2)
+  lyt = matrix(c(1,1,1,2,2,1,1,1,2,2,3,3,3,3,3), byrow = T,ncol = 5)
+  multiplot(p1, p2, histoplot, layout = lyt)
 }
 
 simseed = 360
@@ -143,6 +144,10 @@ inputPanel(
               min = 0.2, max = 0.8, step = 0.1, value = 0.8),
   sliderInput('bvar', label = 'Variance of B:',
               min = 0.05, max = 0.3, step = 0.05, value = 0.05),
+  sliderInput('amean', label = 'Mean of A:',
+              min = 0.2, max = 0.8, step = 0.1, value = 0.5),
+  sliderInput('avar', label = 'Variance of A:',
+              min = 0.05, max = 0.3, step = 0.05, value = 0.15),
   selectInput('type', label = 'Interaction type:',
               choices = c('A OR B', '!A OR !B', '!A OR B', 'A AND B', '!A AND !B', 'A AND !B'), selected = 'A OR B')
 )
@@ -160,8 +165,8 @@ inputModels = sim$inputModels
 renderPlot({
   #model modification
   inputModels$B$mean = c(as.numeric(input$b1mean), as.numeric(input$b2mean))
-  inputModels$A$mean = 0.5
-  inputModels$A$sd = 0.15
+  inputModels$A$mean = as.numeric(input$amean)
+  inputModels$A$sd = as.numeric(input$avar)
   inputModels$B$sd = rep(as.numeric((input$bvar)), 2)
   sim$inputModels = inputModels
   
@@ -177,7 +182,7 @@ renderPlot({
   cors = round(cors, digits = 2)
   
   histd = data.frame('Expr' = c(plotd$A, plotd$B), 'Gene' = rep(c('A', 'B'), each = nrow(plotd)))
-  ggplot(histd, aes(Expr, fill = Gene)) + geom_histogram(alpha = 0.7, position = 'identity') +
+  hplot = ggplot(histd, aes(Expr, fill = Gene)) + geom_histogram(alpha = 0.7, position = 'identity') +
     ggtitle(paste('Input data', ' (cor = ', cors['A', 'B'], ')', sep = '')) +
     theme_minimal() +
     theme(
@@ -196,7 +201,7 @@ renderPlot({
     sim = new('SimulationGRN', graph = g, seed = simseed)
     sim$inputModels = inputModels
     d = simulateDataset(sim, nsamp)
-    plotds(d, 'A OR B', generateRateEqn(getNode(g, 'C'), g))
+    plotds(d, 'A OR B', generateRateEqn(getNode(g, 'C'), g), hplot)
   }
   
   if(input$type %in%  '!A OR !B'){
@@ -210,7 +215,7 @@ renderPlot({
     sim = new('SimulationGRN', graph = g, seed = simseed)
     sim$inputModels = inputModels
     d = simulateDataset(sim, nsamp)
-    plotds(d, '!A OR !B', generateRateEqn(getNode(g, 'C'), g))
+    plotds(d, '!A OR !B', generateRateEqn(getNode(g, 'C'), g), hplot)
   }
   
   if(input$type %in%  '!A OR B'){
@@ -224,7 +229,7 @@ renderPlot({
     sim = new('SimulationGRN', graph = g, seed = simseed)
     sim$inputModels = inputModels
     d = simulateDataset(sim, nsamp)
-    plotds(d, '!A OR B', generateRateEqn(getNode(g, 'C'), g))
+    plotds(d, '!A OR B', generateRateEqn(getNode(g, 'C'), g), hplot)
   }
   
   if(input$type %in%  'A AND B'){
@@ -237,7 +242,7 @@ renderPlot({
     sim = new('SimulationGRN', graph = g, seed = simseed)
     sim$inputModels = inputModels
     d = simulateDataset(sim, nsamp)
-    plotds(d, 'A AND B', generateRateEqn(getNode(g, 'C'), g))
+    plotds(d, 'A AND B', generateRateEqn(getNode(g, 'C'), g), hplot)
   }
   
   if(input$type %in%  '!A AND !B'){
@@ -250,7 +255,7 @@ renderPlot({
     sim = new('SimulationGRN', graph = g, seed = simseed)
     sim$inputModels = inputModels
     d = simulateDataset(sim, nsamp)
-    plotds(d, '!A AND !B', generateRateEqn(getNode(g, 'C'), g))
+    plotds(d, '!A AND !B', generateRateEqn(getNode(g, 'C'), g), hplot)
   }
   
   if(input$type %in%  'A AND !B'){
@@ -263,7 +268,7 @@ renderPlot({
     sim = new('SimulationGRN', graph = g, seed = simseed)
     sim$inputModels = inputModels
     d = simulateDataset(sim, nsamp)
-    plotds(d, 'A AND !B', generateRateEqn(getNode(g, 'C'), g))
+    plotds(d, 'A AND !B', generateRateEqn(getNode(g, 'C'), g), hplot)
   }
 })
 ```
