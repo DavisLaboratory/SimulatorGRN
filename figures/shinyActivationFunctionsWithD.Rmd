@@ -1,12 +1,12 @@
 ---
-title: "shinyActivationFunction"
+title: "shinyActivationFunctionWithD"
 author: "Dharmesh Bhuva"
 date: "29 August 2017"
 output: html_document
 runtime: shiny
 ---
-
-```{r setup, include=FALSE}
+  
+  ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
@@ -39,38 +39,38 @@ fAct <- function(TF, EC50 = 0.5, n = 1.39) {
 
 #multiplot function
 multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL) {
-	
-	# Make a list from the ... arguments and plotlist
-	plots <- c(list(...), plotlist)
-	
-	numPlots = length(plots)
-	
-	# If layout is NULL, then use 'cols' to determine layout
-	if (is.null(layout)) {
-		# Make the panel
-		# ncol: Number of columns of plots
-		# nrow: Number of rows needed, calculated from # of cols
-		layout <- matrix(seq(1, cols * ceiling(numPlots/cols)),
-						 ncol = cols, nrow = ceiling(numPlots/cols))
-	}
-	
-	if (numPlots==1) {
-		print(plots[[1]])
-		
-	} else {
-		# Set up the page
-		grid.newpage()
-		pushViewport(viewport(layout = grid.layout(nrow(layout), ncol(layout))))
-		
-		# Make each plot, in the correct location
-		for (i in 1:numPlots) {
-			# Get the i,j matrix positions of the regions that contain this subplot
-			matchidx <- as.data.frame(which(layout == i, arr.ind = TRUE))
-			
-			print(plots[[i]], vp = viewport(layout.pos.row = matchidx$row,
-											layout.pos.col = matchidx$col))
-		}
-	}
+  
+  # Make a list from the ... arguments and plotlist
+  plots <- c(list(...), plotlist)
+  
+  numPlots = length(plots)
+  
+  # If layout is NULL, then use 'cols' to determine layout
+  if (is.null(layout)) {
+    # Make the panel
+    # ncol: Number of columns of plots
+    # nrow: Number of rows needed, calculated from # of cols
+    layout <- matrix(seq(1, cols * ceiling(numPlots/cols)),
+                     ncol = cols, nrow = ceiling(numPlots/cols))
+  }
+  
+  if (numPlots==1) {
+    print(plots[[1]])
+    
+  } else {
+    # Set up the page
+    grid.newpage()
+    pushViewport(viewport(layout = grid.layout(nrow(layout), ncol(layout))))
+    
+    # Make each plot, in the correct location
+    for (i in 1:numPlots) {
+      # Get the i,j matrix positions of the regions that contain this subplot
+      matchidx <- as.data.frame(which(layout == i, arr.ind = TRUE))
+      
+      print(plots[[i]], vp = viewport(layout.pos.row = matchidx$row,
+                                      layout.pos.col = matchidx$col))
+    }
+  }
 }
 
 nsize = 40
@@ -78,7 +78,7 @@ nsize = 40
 
 #Conditional dependence
 ```{r, echo=FALSE}
-plotds <- function(d, ptitle, rteqn, histoplot){
+plotds <- function(d, ptitle, rteqn, histoplot,dinhib){
   plotd = as.data.frame(t(d))
   cors = cor(plotd)
   cors = round(cors, digits = 2)
@@ -105,6 +105,7 @@ plotds <- function(d, ptitle, rteqn, histoplot){
   #activation function plots
   f = function(A, B, rateeqn) {
     D = 0
+    if (dinhib) D = 1
     C = 0
     eval(parse(text = rateeqn))
   }
@@ -135,7 +136,7 @@ simseed = 360
 nsamp = 100
 ```
 
-Input models setting with A, B and C
+Input models setting with A, B, C and D
 ```{r, echo=FALSE, message=FALSE, warning=FALSE}
 #input panel
 inputPanel(
@@ -144,21 +145,26 @@ inputPanel(
   sliderInput('b2mean', label = 'Mean of mixture 2 of B:',
               min = 0.2, max = 0.8, step = 0.1, value = 0.6),
   sliderInput('bvar', label = 'Variance of B:',
-              min = 0.05, max = 0.3, step = 0.05, value = 0.05),
+              min = 0.025, max = 0.3, step = 0.025, value = 0.05),
   sliderInput('amean', label = 'Mean of A:',
-              min = 0.2, max = 0.8, step = 0.1, value = 0.8),
+              min = 0.2, max = 0.8, step = 0.1, value = 0.5),
   sliderInput('avar', label = 'Variance of A:',
-              min = 0.05, max = 0.3, step = 0.05, value = 0.1),
+              min = 0.025, max = 0.3, step = 0.025, value = 0.1),
+  sliderInput('dmean', label = 'Mean of D:',
+              min = 0.2, max = 0.8, step = 0.1, value = 0.2),
+  sliderInput('dvar', label = 'Variance of D:',
+              min = 0.025, max = 0.3, step = 0.025, value = 0.05),
   selectInput('type', label = 'Interaction type:',
-              choices = c('A OR B', '!A OR !B', '!A OR B', 'A AND B', '!A AND !B', 'A AND !B'), selected = 'A OR B')
+              choices = c('D OR (A OR B)', 'D OR (A AND B) - Conditional', '!D AND (!A AND !B)', 'D OR (A AND !B) - Conditional'), selected = 'D OR (A OR B)')
 )
 
 g = new('GraphGRN')
-for (n in c('B', 'A' ,'C')) {
+for (n in c('B', 'A' ,'C', 'D')) {
   g = addNode(g, n)
 }
 g = addEdge(g, 'B', 'C', activation = T)
 g = addEdge(g, 'A', 'C', activation = T)
+g = addEdge(g, 'D', 'C', activation = T)
 
 sim = new('SimulationGRN', graph = g, seed = simseed)
 inputModels = sim$inputModels
@@ -168,6 +174,9 @@ renderPlot({
   inputModels$B$mean = c(as.numeric(input$b1mean), as.numeric(input$b2mean))
   inputModels$A$mean = as.numeric(input$amean)
   inputModels$A$sd = as.numeric(input$avar)
+  inputModels$D = inputModels$A
+  inputModels$D$mean = as.numeric(input$dmean)
+  inputModels$D$sd = as.numeric(input$dvar)
   inputModels$B$sd = rep(as.numeric((input$bvar)), 2)
   sim$inputModels = inputModels
   
@@ -182,7 +191,7 @@ renderPlot({
   cors = cor(plotd)
   cors = round(cors, digits = 2)
   
-  histd = data.frame('Expr' = c(plotd$A, plotd$B), 'Gene' = rep(c('A', 'B'), each = nrow(plotd)))
+  histd = data.frame('Expr' = c(plotd$A, plotd$B, plotd$D), 'Gene' = rep(c('A', 'B', 'D'), each = nrow(plotd)))
   hplot = ggplot(histd, aes(Expr, fill = Gene)) + geom_histogram(alpha = 0.7, position = 'identity') +
     ggtitle(paste('Input data', ' (cor = ', cors['A', 'B'], ')', sep = '')) +
     theme_minimal() +
@@ -190,87 +199,65 @@ renderPlot({
       panel.grid.major = element_blank(),
       panel.grid.minor = element_blank()
     )
+  hplot
   
-  if(input$type %in%  'A OR B'){
-  #2 activators OR
-  g = new('GraphGRN')
-    for (n in LETTERS[1:3]) {
+  if(input$type %in%  'D OR (A OR B)'){
+    #2 activators OR
+    g = new('GraphGRN')
+    for (n in LETTERS[1:4]) {
       g = addNode(g, n)
     }
+    g = addEdge(g, 'D', 'C', activation = T)
     g = addEdge(g, 'A', 'C', activation = T)
     g = addEdge(g, 'B', 'C', activation = T)
     sim = new('SimulationGRN', graph = g, seed = simseed)
     sim$inputModels = inputModels
     d = simulateDataset(sim, nsamp)
-    plotds(d, 'A OR B', generateRateEqn(getNode(g, 'C'), g), hplot)
+    plotds(d, 'A OR B', generateRateEqn(getNode(g, 'C'), g), hplot, F)
   }
-  
-  if(input$type %in%  '!A OR !B'){
-    #2 repressors OR
-    g = new('GraphGRN')
-    for (n in LETTERS[1:3]) {
-      g = addNode(g, n)
-    }
-    g = addEdge(g, 'A', 'C', activation = F)
-    g = addEdge(g, 'B', 'C', activation = F)
-    sim = new('SimulationGRN', graph = g, seed = simseed)
-    sim$inputModels = inputModels
-    d = simulateDataset(sim, nsamp)
-    plotds(d, '!A OR !B', generateRateEqn(getNode(g, 'C'), g), hplot)
-  }
-  
-  if(input$type %in%  '!A OR B'){
-    #1 repressor, 1 Activator OR
-    g = new('GraphGRN')
-    for (n in LETTERS[1:3]) {
-      g = addNode(g, n)
-    }
-    g = addEdge(g, 'A', 'C', activation = F)
-    g = addEdge(g, 'B', 'C', activation = T)
-    sim = new('SimulationGRN', graph = g, seed = simseed)
-    sim$inputModels = inputModels
-    d = simulateDataset(sim, nsamp)
-    plotds(d, '!A OR B', generateRateEqn(getNode(g, 'C'), g), hplot)
-  }
-  
-  if(input$type %in%  'A AND B'){
+
+  if(input$type %in%  'D OR (A AND B) - Conditional'){
     #2 activators AND
     g = new('GraphGRN')
-    for (n in LETTERS[1:3]) {
+    for (n in LETTERS[1:4]) {
       g = addNode(g, n)
     }
+    g = addEdge(g, 'D', 'C', activation = T)
     g = addEdge(g, c('A', 'B'), 'C', activation = c(T, T), edgetype = 'and')
     sim = new('SimulationGRN', graph = g, seed = simseed)
     sim$inputModels = inputModels
     d = simulateDataset(sim, nsamp)
-    plotds(d, 'A AND B', generateRateEqn(getNode(g, 'C'), g), hplot)
+    plotds(d, 'A AND B', generateRateEqn(getNode(g, 'C'), g), hplot, F)
   }
-  
-  if(input$type %in%  '!A AND !B'){
+
+  if(input$type %in%  '!D AND (!A AND !B)'){
     #2 repressors AND
     g = new('GraphGRN')
-    for (n in LETTERS[1:3]) {
+    for (n in LETTERS[1:4]) {
       g = addNode(g, n)
     }
-    g = addEdge(g, c('A', 'B'), 'C', activation = c(F, F), edgetype = 'and')
+    g = addEdge(g, c('A', 'B', 'D'), 'C', activation = c(F, F, F), edgetype = 'and')
     sim = new('SimulationGRN', graph = g, seed = simseed)
     sim$inputModels = inputModels
     d = simulateDataset(sim, nsamp)
-    plotds(d, '!A AND !B', generateRateEqn(getNode(g, 'C'), g), hplot)
+    plotds(d, '!A AND !B', generateRateEqn(getNode(g, 'C'), g), hplot, F)
   }
-  
-  if(input$type %in%  'A AND !B'){
+
+  if(input$type %in%  'D OR (A AND !B) - Conditional'){
     #1 repressor, 1 Activator AND
     g = new('GraphGRN')
-    for (n in LETTERS[1:3]) {
+    for (n in LETTERS[1:4]) {
       g = addNode(g, n)
     }
+    g = addEdge(g, 'D', 'C', activation = T)
     g = addEdge(g, c('A', 'B'), 'C', activation = c(T, F), edgetype = 'and')
     sim = new('SimulationGRN', graph = g, seed = simseed)
     sim$inputModels = inputModels
     d = simulateDataset(sim, nsamp)
-    plotds(d, 'A AND !B', generateRateEqn(getNode(g, 'C'), g), hplot)
+    plotds(d, 'A AND !B', generateRateEqn(getNode(g, 'C'), g), hplot, F)
   }
 })
 ```
+
+
 
