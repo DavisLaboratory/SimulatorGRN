@@ -482,12 +482,12 @@ plotds <- function(d, ptitle, rteqn){
   corhighB = round(cor(plotd[classf == 2, 1:2])[1, 2], digits = 2)
   classf[classf == 1] = paste('low B (', corlowB, ')', sep = '')
   classf[classf == 2] = paste('high B (', corhighB, ')', sep = '')
-  plotd$B = classf
+  plotd$BClass = classf
   
-  p1 = ggplot(plotd, aes(A, C)) + geom_point() +
+  p1 = ggplot(plotd, aes(A, C, colour = B)) + geom_point() +
     scale_colour_distiller(palette = 'RdPu', direction = 1) +
     ggtitle(paste(ptitle, ' (cor = ', cors['A', 'C'], ')', sep = '')) +
-    facet_wrap(~B) +
+    facet_wrap(~BClass) +
     theme_minimal() +
     theme(
       panel.grid.minor = element_blank(),
@@ -519,7 +519,8 @@ plotds <- function(d, ptitle, rteqn){
     ) +
     geom_point(data = plotd, aes(A, B), colour = 'white', alpha = 0.2, size = 2)
   
-  multiplot(p1, p2, cols = 2)
+  lyt = matrix(c(1,1,2),nrow = 1)
+  multiplot(p1, p2, layout = lyt)
 }
 
 simseed = 360

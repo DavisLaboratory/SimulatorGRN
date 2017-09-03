@@ -59,3 +59,5 @@ foreach(i=1:iter, .combine = c) %do% {
 }
 t = difftime(Sys.time(), t, units = 'sec')
 
+df = data.frame('z.score' = c(andScores, orScores), 'Type' = rep(as.factor(c('AND', 'OR')), each = length(orScores)))
+ggplot(df, aes(z.score, fill = Type)) + geom_histogram(position = 'identity', alpha = 0.7)
