@@ -27,6 +27,7 @@ library(foreach)
 library(nleqslv)
 library(mclust)
 library(shiny)
+library(stringr)
 
 #activation function
 fAct <- function(TF, EC50 = 0.5, n = 1.39) {
@@ -155,10 +156,10 @@ inputPanel(
 
 g = new('GraphGRN')
 for (n in c('B', 'A' ,'C')) {
-  g = addNode(g, n)
+  g = addNodeRNA(g, n)
 }
-g = addEdge(g, 'B', 'C', activation = T)
-g = addEdge(g, 'A', 'C', activation = T)
+g = addEdgeReg(g, 'B', 'C', activation = T)
+g = addEdgeReg(g, 'A', 'C', activation = T)
 
 sim = new('SimulationGRN', graph = g, seed = simseed)
 inputModels = sim$inputModels
@@ -195,10 +196,12 @@ renderPlot({
   #2 activators OR
   g = new('GraphGRN')
     for (n in LETTERS[1:3]) {
-      g = addNode(g, n)
+      g = addNodeRNA(g, n)
     }
-    g = addEdge(g, 'A', 'C', activation = T)
-    g = addEdge(g, 'B', 'C', activation = T)
+    g = addEdgeReg(g, 'A', 'C', activation = T)
+    g = addEdgeReg(g, 'B', 'C', activation = T)
+    getNode(g, 'C')$logiceqn = 'A | B'
+    
     sim = new('SimulationGRN', graph = g, seed = simseed)
     sim$inputModels = inputModels
     d = simulateDataset(sim, nsamp)
@@ -209,10 +212,12 @@ renderPlot({
     #2 repressors OR
     g = new('GraphGRN')
     for (n in LETTERS[1:3]) {
-      g = addNode(g, n)
+      g = addNodeRNA(g, n)
     }
-    g = addEdge(g, 'A', 'C', activation = F)
-    g = addEdge(g, 'B', 'C', activation = F)
+    g = addEdgeReg(g, 'A', 'C', activation = F)
+    g = addEdgeReg(g, 'B', 'C', activation = F)
+    getNode(g, 'C')$logiceqn = '!A | !B'
+    
     sim = new('SimulationGRN', graph = g, seed = simseed)
     sim$inputModels = inputModels
     d = simulateDataset(sim, nsamp)
@@ -223,10 +228,12 @@ renderPlot({
     #1 repressor, 1 Activator OR
     g = new('GraphGRN')
     for (n in LETTERS[1:3]) {
-      g = addNode(g, n)
+      g = addNodeRNA(g, n)
     }
-    g = addEdge(g, 'A', 'C', activation = F)
-    g = addEdge(g, 'B', 'C', activation = T)
+    g = addEdgeReg(g, 'A', 'C', activation = F)
+    g = addEdgeReg(g, 'B', 'C', activation = T)
+    getNode(g, 'C')$logiceqn = '!A | B'
+    
     sim = new('SimulationGRN', graph = g, seed = simseed)
     sim$inputModels = inputModels
     d = simulateDataset(sim, nsamp)
@@ -237,9 +244,12 @@ renderPlot({
     #2 activators AND
     g = new('GraphGRN')
     for (n in LETTERS[1:3]) {
-      g = addNode(g, n)
+      g = addNodeRNA(g, n)
     }
-    g = addEdge(g, c('A', 'B'), 'C', activation = c(T, T), edgetype = 'and')
+    g = addEdgeReg(g, 'A', 'C', activation = F)
+    g = addEdgeReg(g, 'B', 'C', activation = T)
+    getNode(g, 'C')$logiceqn = 'A & B'
+    
     sim = new('SimulationGRN', graph = g, seed = simseed)
     sim$inputModels = inputModels
     d = simulateDataset(sim, nsamp)
@@ -250,9 +260,12 @@ renderPlot({
     #2 repressors AND
     g = new('GraphGRN')
     for (n in LETTERS[1:3]) {
-      g = addNode(g, n)
+      g = addNodeRNA(g, n)
     }
-    g = addEdge(g, c('A', 'B'), 'C', activation = c(F, F), edgetype = 'and')
+    g = addEdgeReg(g, 'A', 'C', activation = F)
+    g = addEdgeReg(g, 'B', 'C', activation = T)
+    getNode(g, 'C')$logiceqn = '!A & !B'
+    
     sim = new('SimulationGRN', graph = g, seed = simseed)
     sim$inputModels = inputModels
     d = simulateDataset(sim, nsamp)
@@ -263,9 +276,12 @@ renderPlot({
     #1 repressor, 1 Activator AND
     g = new('GraphGRN')
     for (n in LETTERS[1:3]) {
-      g = addNode(g, n)
+      g = addNodeRNA(g, n)
     }
-    g = addEdge(g, c('A', 'B'), 'C', activation = c(T, F), edgetype = 'and')
+    g = addEdgeReg(g, 'A', 'C', activation = F)
+    g = addEdgeReg(g, 'B', 'C', activation = T)
+    getNode(g, 'C')$logiceqn = 'A & !B'
+    
     sim = new('SimulationGRN', graph = g, seed = simseed)
     sim$inputModels = inputModels
     d = simulateDataset(sim, nsamp)

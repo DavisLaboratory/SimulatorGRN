@@ -68,7 +68,7 @@ logiceqparser <- function(logiceq, node, graph) {
         stop(paste0('Edge not found: ', regname, '->', node$name))
       }
       
-        regname = paste0('\'', regname, '\'')
+      regname = paste0('NODE(\'', regname, '\', node, graph)')
       estack = c(regname, estack)
       logiceq = unlist(str_split(logiceq, '^\\w+', n = 2))[2]
     } else if (grepl('^[\\+\\|&!]{1}', logiceq)) {
@@ -78,14 +78,24 @@ logiceqparser <- function(logiceq, node, graph) {
         if (opstack[1] %in% '!'){
           e1 = estack[1]
           estack = estack[-1]#pop expr
-          estack = c(paste0(fnnames[which(ops %in% opstack[1])], '(', e1, ', node, graph)'), estack)
+          estack = c(paste0(fnnames[which(ops %in% opstack[1])], '(', e1, ')'), estack)
           opstack = opstack[-1]#pop op
-        } else{
+        } else if (opstack[1] %in% c('&', '|')){
           e2 = estack[1]
           e1 = estack[2]
-          estack = estack[-(1:2)]
-          estack = c(paste0(fnnames[which(ops %in% opstack[1])], '(', e1, ',', e2, ', node, graph)'), estack)
+          estack = estack[-(1:2)]#pop exprs
+          estack = c(paste0(fnnames[which(ops %in% opstack[1])], '(', e1, ', ', e2, ')'), estack)
           opstack = opstack[-1]#popop
+        } else{
+          if (op %in% '+'){
+            break
+          } else{
+            numops = rle(opstack)$lengths[1]
+            es = estack[1:(numops + 1)]
+            estack = estack[-(1:(numops + 1))]#pop exprs
+            estack = c(paste0('ADD', '(', paste(es, collapse = ', '), ')'), estack)
+            opstack = opstack[-(1:numops)]#popop
+          }
         }
       }
       
@@ -97,15 +107,21 @@ logiceqparser <- function(logiceq, node, graph) {
       while (opstack[1] != '(') {
         if (opstack[1] %in% '!'){
           e1 = estack[1]
-          estack = estack[-1]
-          estack = c(paste0(fnnames[which(ops %in% opstack[1])], '(', e1, ', node, graph)'), estack)
-          opstack = opstack[-1]
-        } else{
+          estack = estack[-1]#pop expr
+          estack = c(paste0(fnnames[which(ops %in% opstack[1])], '(', e1, ')'), estack)
+          opstack = opstack[-1]#pop op
+        } else if (opstack[1] %in% c('&', '|')){
           e2 = estack[1]
           e1 = estack[2]
-          estack = estack[-(1:2)]
-          estack = c(paste0(fnnames[which(ops %in% opstack[1])], '(', e1, ',', e2, ', node, graph)'), estack)
-          opstack = opstack[-1]
+          estack = estack[-(1:2)]#pop exprs
+          estack = c(paste0(fnnames[which(ops %in% opstack[1])], '(', e1, ', ', e2, ')'), estack)
+          opstack = opstack[-1]#popop
+        } else{
+          numops = rle(opstack)$lengths[1]
+          es = estack[1:(numops + 1)]
+          estack = estack[-(1:(numops + 1))]#pop exprs
+          estack = c(paste0('ADD', '(', paste(es, collapse = ', '), ')'), estack)
+          opstack = opstack[-(1:numops)]#popop
         }
       }
       
@@ -117,15 +133,21 @@ logiceqparser <- function(logiceq, node, graph) {
       while (length(opstack) != 0) {
         if (opstack[1] %in% '!'){
           e1 = estack[1]
-          estack = estack[-1]
-          estack = c(paste0(fnnames[which(ops %in% opstack[1])], '(', e1, ', node, graph)'), estack)
-          opstack = opstack[-1]
-        } else{
+          estack = estack[-1]#pop expr
+          estack = c(paste0(fnnames[which(ops %in% opstack[1])], '(', e1, ')'), estack)
+          opstack = opstack[-1]#pop op
+        } else if (opstack[1] %in% c('&', '|')){
           e2 = estack[1]
           e1 = estack[2]
-          estack = estack[-(1:2)]
-          estack = c(paste0(fnnames[which(ops %in% opstack[1])], '(', e1, ',', e2, ', node, graph)'), estack)
-          opstack = opstack[-1]
+          estack = estack[-(1:2)]#pop exprs
+          estack = c(paste0(fnnames[which(ops %in% opstack[1])], '(', e1, ', ', e2, ')'), estack)
+          opstack = opstack[-1]#popop
+        } else{
+          numops = rle(opstack)$lengths[1]
+          es = estack[1:(numops + 1)]
+          estack = estack[-(1:(numops + 1))]#pop exprs
+          estack = c(paste0('ADD', '(', paste(es, collapse = ', '), ')'), estack)
+          opstack = opstack[-(1:numops)]#popop
         }
       }
       
@@ -138,83 +160,48 @@ logiceqparser <- function(logiceq, node, graph) {
   return(estack)
 }
 
-NOT <- function(expr, node, graph) {
-  if (expr %in% nodenames(graph)) {
-    e = getEdge(graph, expr, node$name)
-    expr = generateActivationEqn(e)
-  }
-  
+NODE <- function(expr, node, graph){
+  e = getEdge(graph, expr, node@name)
+  expr = generateActivationEqn(e)
+  expr = paste(e@weight, expr, sep = ' * ')
+}
+
+NOT <- function(expr) {
   expr = paste0('(1 - ', expr, ')')
   return(expr)
 }
 
-AND <- function(expr1, expr2, node, graph) {
-  if (expr1 %in% nodenames(graph)) {
-    e = getEdge(graph, expr1, node$name)
-    expr1 = generateActivationEqn(e)
-  }
-  if (expr2 %in% nodenames(graph)) {
-    e = getEdge(graph, expr2, node$name)
-    expr2 = generateActivationEqn(e)
-  }
-  
-  expr = paste0( expr1, ' * ', expr2)
+AND <- function(expr1, expr2) {
+  expr = paste0('(', expr1, ' * ', expr2, ')')
   return(expr)
 }
 
-OR <- function(expr1, expr2, node, graph) {
-  if (expr1 %in% nodenames(graph)) {
-    e = getEdge(graph, expr1, node$name)
-    expr1 = generateActivationEqn(e)
-  }
-  if (expr2 %in% nodenames(graph)) {
-    e = getEdge(graph, expr2, node$name)
-    expr2 = generateActivationEqn(e)
-  }
-  
+OR <- function(expr1, expr2) {
   expr = paste0('(', expr1, ' + ', expr2, ' - ', expr1, ' * ', expr2, ')')
   return(expr)
 }
 
+ADD <- function(...) {
+  exprs = c(...)
+  exprs = paste(paste0('1/',length(exprs)), exprs, sep = ' * ')
+  expr = paste0('(', paste(exprs, collapse = ' + '), ')')
+  return(expr)
+}
+
 generateRateEqn <- function(node, graph) {
-  logiceqn = node$logiceqn
+  #no rate equations for input nodes
+  if (is.na(node@logiceqn)) {
+    return('')
+  }
   
-  
-  
-  
-  
-	inedges = node$inedges
-	#no rate equations for input nodes
-	if (length(inedges) == 0) {
-		return('')
-	}
-	
-	#generate activation functions for each interaction
-	actEqns = sapply(graph@edgeset[inedges], generateActivationEqn)
-	act = paste(actEqns, collapse = ' + ')
-	
-	#subtract the combinations
-	nEq = length(actEqns)
-	if (nEq > 1) {
-		combEqns = character(0)
-		for (i in 2:nEq) {
-			combs = combn(actEqns, i)
-			combEqn = apply(combs, 2, paste, collapse = ' * ')
-			
-			sgn = ' - '
-			if (i %% 2 != 0){
-			  sgn = ' + '
-			}
-			
-			act = paste(c(act, combEqn), collapse = sgn)
-		}
-	}
+  logiceqnR = logiceqparser(node@logiceqn, node, graph)
+  act = with(list(node, graph), eval(parse(text = logiceqnR)))
 	
 	#generate rate equation
-	rateEqn = paste('(', act, ')', sep = '')
-	rateEqn = paste(rateEqn, node@spmax, sep = ' * ')
+	rateEqn = paste(act, node@spmax, sep = ' * ')
 	degradationEqn = paste(node@spdeg, node@name, sep = ' * ')
 	rateEqn = paste(rateEqn, degradationEqn, sep = ' - ')
+	rateEqn = paste('(', rateEqn, ') / ', node@tau, sep = '')
 	return(rateEqn)
 }
 

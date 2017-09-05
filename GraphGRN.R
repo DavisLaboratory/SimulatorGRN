@@ -335,7 +335,7 @@ setMethod(
 		if (is.na(tonode$logiceqn)) {
 		  tonode$logiceqn = fromeqn
 		} else{
-		  tonode$logiceqn = paste(tonode$logiceqn, fromeqn, sep = ' + ')
+		  tonode$logiceqn = paste(tonode$logiceqn, fromeqn, sep = ' & ')
 		}
 		#store modified node
 		graph@nodeset[[tonode$name]] = tonode
