@@ -13,12 +13,13 @@ validNode <- function(object) {
   return(TRUE)
 }
 
-initNode <- function(.Object, ..., name = '', spmax = 1, spdeg = 1, inedges = character(), outedges = character()) {
+initNode <- function(.Object, ..., name = '', spmax = 1, spdeg = 1, logiceqn = as.character(NA), inedges = character(), outedges = character()) {
 	.Object@name = name
 	.Object@spmax = spmax
 	.Object@spdeg = spdeg
 	.Object@inedges = inedges
 	.Object@outedges = outedges
+	.Object@logiceqn = logiceqn
 	
 	validObject(.Object)
 	return(.Object)
@@ -42,7 +43,146 @@ initNodeRNA <- function(.Object, ..., tau = 1) {
 	return(.Object)
 }
 
+#----NodeRNA: Eqn generation functions----
+logiceqparser <- function(logiceq, node, graph) {
+  estack = c()
+  opstack = c()
+  ops = c('&', '|', '+', '!', '(')
+  precedence = c(4, 3, 2, 5, 1)
+  fnnames = c('AND', 'OR', 'ADD', 'NOT', '')
+  
+  logiceq = str_replace_all(logiceq, ' ', '')
+  while(!is.null(logiceq)) {
+    if (grepl('^\\(', logiceq)) {
+      opstack = c('(', opstack)
+      logiceq = unlist(str_split(logiceq, '^\\(', n = 2))[2]
+    } else if (grepl('^\\w+', logiceq)) {
+      #expression stacked
+      regname = str_extract(logiceq,'^\\w+') #extract regulator
+      
+      #check whether the node exists and whether the interaction exists
+      if (!regname %in% nodenames(graph)) {
+        stop(paste0('Node not found in graph: ', regname))
+      }
+      if (is.null(getEdge(graph, regname, node$name))) {
+        stop(paste0('Edge not found: ', regname, '->', node$name))
+      }
+      
+        regname = paste0('\'', regname, '\'')
+      estack = c(regname, estack)
+      logiceq = unlist(str_split(logiceq, '^\\w+', n = 2))[2]
+    } else if (grepl('^[\\+\\|&!]{1}', logiceq)) {
+      op = str_extract(logiceq,'^[\\+\\|&!]{1}')
+      #perform operations if precendence is higher or same
+      while (length(opstack) != 0 && precedence[which(ops %in% opstack[1])] >= precedence[which(ops %in% op)]) {
+        if (opstack[1] %in% '!'){
+          e1 = estack[1]
+          estack = estack[-1]#pop expr
+          estack = c(paste0(fnnames[which(ops %in% opstack[1])], '(', e1, ', node, graph)'), estack)
+          opstack = opstack[-1]#pop op
+        } else{
+          e2 = estack[1]
+          e1 = estack[2]
+          estack = estack[-(1:2)]
+          estack = c(paste0(fnnames[which(ops %in% opstack[1])], '(', e1, ',', e2, ', node, graph)'), estack)
+          opstack = opstack[-1]#popop
+        }
+      }
+      
+      #operation stacked
+      opstack = c(op, opstack)
+      logiceq = unlist(str_split(logiceq, '^[\\+\\|&!]{1}', n = 2))[2]#digest eq
+    } else if (grepl('^\\)', logiceq)) {
+      #end of brackets
+      while (opstack[1] != '(') {
+        if (opstack[1] %in% '!'){
+          e1 = estack[1]
+          estack = estack[-1]
+          estack = c(paste0(fnnames[which(ops %in% opstack[1])], '(', e1, ', node, graph)'), estack)
+          opstack = opstack[-1]
+        } else{
+          e2 = estack[1]
+          e1 = estack[2]
+          estack = estack[-(1:2)]
+          estack = c(paste0(fnnames[which(ops %in% opstack[1])], '(', e1, ',', e2, ', node, graph)'), estack)
+          opstack = opstack[-1]
+        }
+      }
+      
+      #operation stacked
+      opstack = opstack[-1]
+      logiceq = unlist(str_split(logiceq, '^\\)', n = 2))[2]
+    } else if (logiceq == '') {
+      #end of equation
+      while (length(opstack) != 0) {
+        if (opstack[1] %in% '!'){
+          e1 = estack[1]
+          estack = estack[-1]
+          estack = c(paste0(fnnames[which(ops %in% opstack[1])], '(', e1, ', node, graph)'), estack)
+          opstack = opstack[-1]
+        } else{
+          e2 = estack[1]
+          e1 = estack[2]
+          estack = estack[-(1:2)]
+          estack = c(paste0(fnnames[which(ops %in% opstack[1])], '(', e1, ',', e2, ', node, graph)'), estack)
+          opstack = opstack[-1]
+        }
+      }
+      
+      logiceq = NULL
+    } else{
+      stop(paste0('Unexpected symbol at: ', logiceq))
+    }
+  }
+  
+  return(estack)
+}
+
+NOT <- function(expr, node, graph) {
+  if (expr %in% nodenames(graph)) {
+    e = getEdge(graph, expr, node$name)
+    expr = generateActivationEqn(e)
+  }
+  
+  expr = paste0('(1 - ', expr, ')')
+  return(expr)
+}
+
+AND <- function(expr1, expr2, node, graph) {
+  if (expr1 %in% nodenames(graph)) {
+    e = getEdge(graph, expr1, node$name)
+    expr1 = generateActivationEqn(e)
+  }
+  if (expr2 %in% nodenames(graph)) {
+    e = getEdge(graph, expr2, node$name)
+    expr2 = generateActivationEqn(e)
+  }
+  
+  expr = paste0( expr1, ' * ', expr2)
+  return(expr)
+}
+
+OR <- function(expr1, expr2, node, graph) {
+  if (expr1 %in% nodenames(graph)) {
+    e = getEdge(graph, expr1, node$name)
+    expr1 = generateActivationEqn(e)
+  }
+  if (expr2 %in% nodenames(graph)) {
+    e = getEdge(graph, expr2, node$name)
+    expr2 = generateActivationEqn(e)
+  }
+  
+  expr = paste0('(', expr1, ' + ', expr2, ' - ', expr1, ' * ', expr2, ')')
+  return(expr)
+}
+
 generateRateEqn <- function(node, graph) {
+  logiceqn = node$logiceqn
+  
+  
+  
+  
+  
 	inedges = node$inedges
 	#no rate equations for input nodes
 	if (length(inedges) == 0) {
@@ -80,6 +220,11 @@ generateRateEqn <- function(node, graph) {
 
 #----Edge: functions----
 validEdge <- function(object) {
+  #Number of regulators is 1
+  if (length(object@to) != 1) {
+    stop('Only 1 target node should be provided for interactions')
+  }
+  
 	#weight in range
 	if (any(is.na(object@weight)) | sum(object@weight < 0 | object@weight > 1) > 0) {
 		stop('Interaction weight has to be between 0 and 1')
@@ -100,8 +245,8 @@ validActivationParams <- function(object) {
 	return(TRUE)
 }
 
-#----EdgeOr: functions----
-validEdgeOr <- function(object) {
+#----EdgeReg: functions----
+validEdgeReg <- function(object) {
   validActivationParams(object)
   
 	#Weight length is 1
@@ -121,13 +266,13 @@ validEdgeOr <- function(object) {
 	
 	#Number of regulators is 1
 	if (length(object@from) != 1) {
-		stop('Only 1 input node should be provided for OR interactions')
+		stop('Only 1 source node should be provided for regulatory interactions')
 	}
 	
 	return(TRUE)
 }
 
-initEdgeOr <- function(.Object, ..., from, to, weight = 1, EC50 = 0.5, n = 1.39, activation = T) {
+initEdgeReg <- function(.Object, ..., from, to, weight = 1, EC50 = 0.5, n = 1.39, activation = T) {
   .Object@from = from
   .Object@to = to
   .Object@weight = weight
@@ -144,89 +289,10 @@ initEdgeOr <- function(.Object, ..., from, to, weight = 1, EC50 = 0.5, n = 1.39,
   return(.Object)
 }
 
-generateActivationEqnOr <- function(object) {
+generateActivationEqnReg <- function(object) {
 	e = object
 	#generate activation eqn
-	act = paste('fAct(', e$from, ',', e$EC50, ',', e$n, ')', sep =	'')
-	if (!e$activation) {
-		act = paste('(1-', act, ')', sep = '')
-	}
-	act = paste(e$weight, act, sep = ' * ')
-	
-	return(act)
-}
-
-#----EdgeAnd: functions----
-validEdgeAnd <- function(object) {
-  validActivationParams(object)
-	numint = length(object@from) #number of interactors
-	
-	#number of inputs
-	if(numint == 1){
-		stop('AND interaction requires at least 2 regulators')
-	}
-	
-	#Weight length is 1
-	if (length(object@weight) != 1) {
-		stop('Only 1 parameter for the weight should be provided for AND interactions')
-	}
-	
-	#EC50 length matches number of interactors
-	if (length(object@EC50) != numint) {
-		stop('Missing EC50 parameters for the AND interaction')
-	}
-	
-	#Hill constant length matches number of interactors
-	if (length(object@n) != numint) {
-		stop('Missing Hill constant(n) parameters for the AND interaction')
-	}
-	
-	#Activation length matches number of interactors
-	if (length(object@activation) != numint) {
-		stop('Missing activation/repression status for the AND interaction')
-	}
-	
-	return(TRUE)
-}
-
-initEdgeAnd <- function(.Object, ..., from, to, weight = 1, EC50 = c(), n = c(), activation = c()) {
-	numint = length(from)
-	if (length(EC50) == 0)
-		EC50 = rep(0.5, numint)
-	if (length(n) == 0)
-		n = rep(1.39, numint)
-	if (length(activation) == 0)
-		activation = rep(T, numint)
-	
-	.Object@from = from
-	.Object@to = to
-	.Object@weight = weight
-	.Object@EC50 = EC50
-	.Object@n = n
-	.Object@activation = activation
-	
-	#generate name
-	name = paste(sort(from), collapse = '')
-	name = paste(name, to, sep = '->')
-	.Object@name = name
-	
-	validObject(.Object)
-	return(.Object)
-}
-
-generateActivationEqnAnd <- function(object) {
-	e = object
-	
-	#generate AND activation eqn
-	act = character(length(e@from))
-	for (i in 1:length(act)) {
-		act[i] = paste('fAct(', e@from[i], ',', e@EC50[i], ',', e@n[i], ')', sep =	'')
-		if (!e$activation[i]) {
-			act[i] = paste('(1-', act[i], ')', sep = '')
-		}
-	}
-	
-	act = paste(c(e$weight, act), collapse = ' * ')
+	act = paste('fAct(', e$from, ', ', e$EC50, ', ', e$n, ')', sep =	'')
 	
 	return(act)
 }
@@ -256,11 +322,11 @@ validGraphGRN <- function(object) {
   #edge checks
   nnames = names(object@nodeset)
   for (e in object@edgeset) {
-    if (!all(e$from %in% nnames)) {
-      stop('Some/all from nodes do not exist in edge: ', e$name)
+    if (!e$from %in% nnames) {
+      stop('Source nodes do not exist in edge: ', e$name)
     }
     if (!e$to %in% nnames) {
-      stop('To node does not exist in edge: ', e$name)
+      stop('Target node does not exist in edge: ', e$name)
     }
   }
   
@@ -281,11 +347,11 @@ validGraphGRN <- function(object) {
     }
     
     #Incoming edges: check that all edges have to as this node
-    infroms = unlist(sapply(object@edgeset[n$inedges], function(e) e$from))
+    infroms = sapply(object@edgeset[n$inedges], function(e) e$from)
     intos = sapply(object@edgeset[n$inedges], function(e) e$to)
     
     if (!all(intos %in% n$name)) {
-      stop('All interactions must have the \'to\' node as current node for node: ', n$name)
+      stop('All inbound interactions must have the \'target\' node as current node for node: ', n$name)
     }
     
     #Incoming edges: check that all regulators are unique
@@ -294,11 +360,11 @@ validGraphGRN <- function(object) {
     }
     
     #Outgoing edges: check that all edges have from as this node
-    outfroms = lapply(object@edgeset[n$outedges], function(e) e$from)
+    outfroms = sapply(object@edgeset[n$outedges], function(e) e$from)
     outtos = sapply(object@edgeset[n$outedges], function(e) e$to)
     
-    if (!all(sapply(outfroms, function (flist) any(flist %in% n$name)))) {
-      stop('All interactions must have the current node as part of \'from\' for node: ', n$name)
+    if (!all(outfroms %in% n$name)) {
+      stop('All oubdound interactions must have the current node as a \'source\' node: ', n$name)
     }
     
     #Outgoing edges: check that all targets are unique

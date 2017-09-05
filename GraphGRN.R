@@ -6,7 +6,8 @@ setClass(
 		spmax = 'numeric',
 		spdeg = 'numeric',
 		inedges = 'character',
-		outedges = 'character'
+		outedges = 'character',
+		logiceqn = 'character'
 	)
 )
 setValidity('Node', validNode)
@@ -45,6 +46,7 @@ setMethod(
     cat('Name:', object@name, '\n')
     cat('RNA max:', object@spmax, '\n')
     cat('RNA degradation rate:', object@spdeg, '\n')
+    cat('Logic equation:', object@logiceqn, '\n')
     
     #print edge list
     cat('Incoming edges:', maxPrint(object@inedges, mxp), '\n')
@@ -148,7 +150,7 @@ setGeneric(
 
 #----EdgeOr----
 setClass(
-	Class = 'EdgeOr',
+	Class = 'EdgeReg',
 	contains = 'Edge',
 	slots = list(
 	  EC50 = 'numeric',
@@ -157,67 +159,31 @@ setClass(
 	)
 )
 
-setValidity('EdgeOr', validEdgeOr)
+setValidity('EdgeReg', validEdgeReg)
 
 setMethod(
   f = 'initialize',
-  signature = 'EdgeOr',
-  definition = initEdgeOr
+  signature = 'EdgeReg',
+  definition = initEdgeReg
 )
 
 setMethod(
 	f = 'generateActivationEqn',
-	signature = 'EdgeOr',
-	definition = generateActivationEqnOr
+	signature = 'EdgeReg',
+	definition = generateActivationEqnReg
 )
 
 setMethod(
   f = 'show',
-  signature = 'EdgeOr',
+  signature = 'EdgeReg',
   definition = function(object) {
     mxp = 10
     
     callNextMethod()
-    cat('EC50:', maxPrint(object@EC50, mxp), '\n')
-    cat('Hill constant (n):', maxPrint(object@n, mxp), '\n')
-    cat('Activation:', maxPrint(object@activation, mxp), '\n')  }
-)
-
-#----EdgeAnd----
-setClass(
-	Class = 'EdgeAnd',
-	contains = 'Edge',
-	slots = list(
-	  EC50 = 'numeric',
-	  n = 'numeric',
-	  activation = 'logical'
-	)
-)
-
-setValidity('EdgeAnd', validEdgeAnd)
-
-setMethod(
-	f = 'initialize',
-	signature = 'EdgeAnd',
-	definition = initEdgeAnd
-)
-
-setMethod(
-	f = 'generateActivationEqn',
-	signature = 'EdgeAnd',
-	definition = generateActivationEqnAnd
-)
-
-setMethod(
-  f = 'show',
-  signature = 'EdgeAnd',
-  definition = function(object) {
-    mxp = 10
-    
-    callNextMethod()
-    cat('EC50:', maxPrint(object@EC50, mxp), '\n')
-    cat('Hill constant (n):', maxPrint(object@n, mxp), '\n')
-    cat('Activation:', maxPrint(object@activation, mxp), '\n')  }
+    cat('EC50:', object@EC50, '\n')
+    cat('Hill constant (n):', object@n, '\n')
+    cat('Activation:', object@activation, '\n')
+  }
 )
 
 #----GraphGRN----
@@ -265,16 +231,16 @@ setMethod(
 
 #----GraphGRN:addNode----
 setGeneric(
-	name = 'addNode',
-	def = function(graph, node, tau, spmax, spdeg, inedges, outedges) {
-		standardGeneric('addNode')
+	name = 'addNodeRNA',
+	def = function(graph, node, tau, spmax, spdeg, logiceqn, inedges, outedges) {
+		standardGeneric('addNodeRNA')
 	}
 )
 
 setMethod(
-	f = 'addNode',
-	signature = c('GraphGRN', 'NodeRNA', 'missing', 'missing', 'missing', 'missing', 'missing'),
-	definition = function(graph, node, tau, spmax, spdeg, inedges, outedges) {
+	f = 'addNodeRNA',
+	signature = c('GraphGRN', 'NodeRNA', 'missing', 'missing', 'missing', 'missing', 'missing', 'missing'),
+	definition = function(graph, node, tau, spmax, spdeg, logiceqn, inedges, outedges) {
 		graph@nodeset = c(graph@nodeset, node)
 		
 		#node name is not empty
@@ -290,9 +256,9 @@ setMethod(
 )
 
 setMethod(
-	f = 'addNode',
-	signature = c('GraphGRN', 'character', 'ANY', 'ANY', 'ANY', 'missing', 'missing'),
-	definition = function(graph, node, tau, spmax, spdeg, inedges, outedges) {
+	f = 'addNodeRNA',
+	signature = c('GraphGRN', 'character', 'ANY', 'ANY', 'ANY', 'ANY', 'missing', 'missing'),
+	definition = function(graph, node, tau, spmax, spdeg, logiceqn, inedges, outedges) {
 		#create default node
 		nodeObj = new('NodeRNA', name = node)
 		
@@ -303,8 +269,10 @@ setMethod(
 			edgeObj$spmax = spmax
 		if(!missing(spdeg) && !is.null(spdeg))
 			edgeObj$spdeg = spdeg
+		if(!missing(logiceqn) && !is.null(logiceqn))
+			edgeObj$logiceqn = logiceqn
 		
-		graph = addNode(graph, nodeObj)
+		graph = addNodeRNA(graph, nodeObj)
 		
 		return(graph)
 	}
@@ -331,23 +299,18 @@ setMethod(
 
 #----GraphGRN:addEdge----
 setGeneric(
-	name = 'addEdge',
-	def = function(graph, from, to, edgetype, activation, weight, EC50, n) {
-		standardGeneric('addEdge')
+	name = 'addEdgeReg',
+	def = function(graph, from, to, activation, weight, EC50, n) {
+		standardGeneric('addEdgeReg')
 	}
 )
 
 setMethod(
-	f = 'addEdge',
-	signature = c('GraphGRN', 'character', 'character', 'ANY', 'ANY', 'ANY', 'ANY', 'ANY'),
-	definition = function(graph, from, to, edgetype, activation, weight, EC50, n) {
-		#get class
-		if(missing(edgetype) || is.null(edgetype))
-		  edgetype = 'or'
-		edgeclass = getEdgeClass(edgetype)
-		
+	f = 'addEdgeReg',
+	signature = c('GraphGRN', 'character', 'character', 'ANY', 'ANY', 'ANY', 'ANY'),
+	definition = function(graph, from, to, activation, weight, EC50, n) {
 		#create default edge
-		edgeObj = new(edgeclass, from = c(from), to = to)
+		edgeObj = new('EdgeReg', from = from, to = to)
 		#modify default edge with provided parameters
 		if(!missing(activation) && !is.null(activation))
 			edgeObj$activation = activation
@@ -364,6 +327,17 @@ setMethod(
 		#update node inedges information
 		tonode = graph@nodeset[[to]]
 		tonode$inedges = c(tonode$inedges, edgeObj$name)
+		#modify logic equation of target node
+		fromeqn = from
+		if (!edgeObj$activation) {
+		  fromeqn = paste0('!', fromeqn)
+		}
+		if (is.na(tonode$logiceqn)) {
+		  tonode$logiceqn = fromeqn
+		} else{
+		  tonode$logiceqn = paste(tonode$logiceqn, fromeqn, sep = ' + ')
+		}
+		#store modified node
 		graph@nodeset[[tonode$name]] = tonode
 		
 		#update node outedges information
@@ -395,7 +369,9 @@ setMethod(
   definition = function(graph, from, to) {
     #ensure or edges exists
     if (length(to) > 1)
-      stop('Multiple to nodes provided, expected 1')
+      stop('Multiple target nodes provided, expected 1')
+    if (length(from) > 1)
+      stop('Multiple source nodes provided, expected 1')
     
     edge = getEdge(graph, from, to)
     if (is.null(edge)) {
@@ -409,47 +385,11 @@ setMethod(
     getNode(graph, to) = toNode
     
     #remove from outedges of from nodes
-    for (f in from) {
-      fromNode = getNode(graph, f)
-      fromNode$outedges = fromNode$outedges[!fromNode$outedges %in% edge$name]
-      getNode(graph, f) = fromNode
-    }
+    fromNode = getNode(graph, from)
+    fromNode$outedges = fromNode$outedges[!fromNode$outedges %in% edge$name]
+    getNode(graph, from) = fromNode
     
     return(graph)
-  }
-)
-
-#----GraphGRN:mergeOr----
-setGeneric(
-  name = 'mergeOr',
-  def = function(graph, from, to, weight) {
-    standardGeneric('mergeOr')
-  }
-)
-
-setMethod(
-  f = 'mergeOr',
-  signature = c('GraphGRN', 'character', 'character', 'ANY'),
-  definition = function(graph, from, to, weight) {
-    if (missing(weight) || is.null(weight))
-      weight = 1
-    orToAnd(graph, from, to, weight)
-  }
-)
-
-#----GraphGRN:splitAnd----
-setGeneric(
-  name = 'splitAnd',
-  def = function(graph, from, to) {
-    standardGeneric('splitAnd')
-  }
-)
-
-setMethod(
-  f = 'splitAnd',
-  signature = c('GraphGRN', 'character', 'character'),
-  definition = function(graph, from, to) {
-    andToOr(graph, from, to)
   }
 )
 
