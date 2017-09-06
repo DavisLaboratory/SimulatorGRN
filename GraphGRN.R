@@ -148,14 +148,13 @@ setGeneric(
 	}
 )
 
-#----EdgeOr----
+#----EdgeReg----
 setClass(
 	Class = 'EdgeReg',
 	contains = 'Edge',
 	slots = list(
 	  EC50 = 'numeric',
-	  n = 'numeric',
-	  activation = 'logical'
+	  n = 'numeric'
 	)
 )
 
@@ -182,7 +181,6 @@ setMethod(
     callNextMethod()
     cat('EC50:', object@EC50, '\n')
     cat('Hill constant (n):', object@n, '\n')
-    cat('Activation:', object@activation, '\n')
   }
 )
 
@@ -312,8 +310,8 @@ setMethod(
 		#create default edge
 		edgeObj = new('EdgeReg', from = from, to = to)
 		#modify default edge with provided parameters
-		if(!missing(activation) && !is.null(activation))
-			edgeObj$activation = activation
+		if(missing(activation) || is.null(activation))
+			activation = T
 		if(!missing(weight) && !is.null(weight))
 			edgeObj$weight = weight
 		if(!missing(EC50) && !is.null(EC50))
@@ -329,7 +327,7 @@ setMethod(
 		tonode$inedges = c(tonode$inedges, edgeObj$name)
 		#modify logic equation of target node
 		fromeqn = from
-		if (!edgeObj$activation) {
+		if (!activation) {
 		  fromeqn = paste0('!', fromeqn)
 		}
 		if (is.na(tonode$logiceqn)) {
@@ -366,31 +364,7 @@ setGeneric(
 setMethod(
   f = 'removeEdge',
   signature = c('GraphGRN', 'character', 'character'),
-  definition = function(graph, from, to) {
-    #ensure or edges exists
-    if (length(to) > 1)
-      stop('Multiple target nodes provided, expected 1')
-    if (length(from) > 1)
-      stop('Multiple source nodes provided, expected 1')
-    
-    edge = getEdge(graph, from, to)
-    if (is.null(edge)) {
-      stop('Edge not found')
-    }
-    
-    #if edge exists, remove it from nodeset, from inedges
-    graph@edgeset = graph@edgeset[!names(graph@edgeset) %in% edge$name]
-    toNode = getNode(graph, to)
-    toNode$inedges = toNode$inedges[!toNode$inedges %in% edge$name]
-    getNode(graph, to) = toNode
-    
-    #remove from outedges of from nodes
-    fromNode = getNode(graph, from)
-    fromNode$outedges = fromNode$outedges[!fromNode$outedges %in% edge$name]
-    getNode(graph, from) = fromNode
-    
-    return(graph)
-  }
+  definition = rmedge
 )
 
 #----GraphGRN:getEdge----

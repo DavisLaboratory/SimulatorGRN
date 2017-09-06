@@ -259,13 +259,12 @@ validEdgeReg <- function(object) {
 	return(TRUE)
 }
 
-initEdgeReg <- function(.Object, ..., from, to, weight = 1, EC50 = 0.5, n = 1.39, activation = T) {
+initEdgeReg <- function(.Object, ..., from, to, weight = 1, EC50 = 0.5, n = 1.39) {
   .Object@from = from
   .Object@to = to
   .Object@weight = weight
   .Object@EC50 = EC50
   .Object@n = n
-  .Object@activation = activation
   
   #generate name
   name = paste(sort(from), collapse = '')
@@ -427,22 +426,8 @@ getODEFunc <- function(graph) {
   return(eval(parse(text = fn)))
 }
 
-getEdgeClass <- function(edgetype) {
-  if (edgetype %in% 'or')
-    edgeclass = 'EdgeOr'
-  else if (edgetype %in% 'and')
-    edgeclass = 'EdgeAnd'
-  else
-    stop('Unrecognised edgetype')
-  
-  return(edgeclass)
-}
-
 rmnode <- function(graph, nodename) {
   #Check nodename exists
-  if (length(nodename) > 1)
-    stop('Multiple nodes provided, expected 1')
-  
   if (!nodename %in% names(graph@nodeset)) {
     stop('Node not found')
   }
@@ -450,111 +435,66 @@ rmnode <- function(graph, nodename) {
   #retrieve node
   node = getNode(graph, nodename)
   
-  #remove from incoming interactions
-  edges = graph@edgeset[node$inedges]
+  #remove from inedges of targets
+  edges = graph@edgeset[c(node$inedges, node$outedges)]
   for (e in edges) {
     graph = removeEdge(graph, e$from, e$to) #remove edge
   }
-  
-  #remove from inedges of targets
-  edges = graph@edgeset[node$outedges]
-  for (e in edges) {
-    from = e$from
-    graph = removeEdge(graph, from, e$to) #remove edge
-    
-    if (is(e, 'EdgeAnd')) {
-      newfrom = !from %in% node$name
-      
-      if (sum(newfrom) > 1) {
-        edgetype = 'and'
-      } else{
-        edgetype = 'or'
-      }
-      
-      #create a new edge without the current node
-      graph = addEdge(
-        graph,
-        edgetype = edgetype,
-        from = e$from[newfrom],
-        to = e$to,
-        activation = e$activation[newfrom],
-        weight = e$weight,
-        EC50 = e$EC50[newfrom],
-        n = e$n[newfrom]
-      )
-    }
-  }
-  
+
   #remove node from nodeset
   graph@nodeset = graph@nodeset[!names(graph@nodeset) %in% node$name]
   
   return(graph)
 }
 
-orToAnd <- function(graph, from, to, weight) {
-  #ensure or edges exist
+rmedge <- function(graph, from, to) {
+  #ensure or edges exists
   if (length(to) > 1)
-    stop('Multiple to nodes provided, expected 1')
+    stop('Multiple target nodes provided, expected 1')
+  if (length(from) > 1)
+    stop('Multiple source nodes provided, expected 1')
   
-  if (length(from) < 2)
-    stop('Need 2 or more edges to merge into an AND edge')
-  
-  edgenames = paste(sort(from), to, sep = '->')
-  if (any(!edgenames %in% names(graph@edgeset))) {
-    stop('Edges not found: ', paste(setdiff(edgenames, names(graph@edgeset)), collapse = ', '))
-  }
-  
-  oredges = graph@edgeset[edgenames]
-  #remove OR edges from graph
-  for (e in oredges) {
-    graph = removeEdge(graph, e$from, e$to)
-  }
-  
-  #add AND edge
-  graph = addEdge(
-    graph,
-    edgetype = 'and',
-    from = from,
-    to = to,
-    activation = as.logical(sapply(oredges, function(e) e$activation)),
-    weight = weight,
-    EC50 = as.numeric(sapply(oredges, function(e) e$EC50)),
-    n = as.numeric(sapply(oredges, function(e) e$n))
-  )
-  
-  return(graph)
-}
-
-andToOr <- function(graph, from, to) {
-  #ensure or edges exist
-  if (length(to) > 1)
-    stop('Multiple to nodes provided, expected 1')
-
-  if (length(from) < 2)
-    stop('Need 2 or more edges to define an AND edge')
-
-  andedge = getEdge(graph, from, to)
-  if (is.null(andedge)) {
+  edge = getEdge(graph, from, to)
+  from = getNode(graph, from)
+  to = getNode(graph, to)
+  if (is.null(edge)) {
     stop('Edge not found')
   }
-
-  #remove AND edge
-  graph = graph = removeEdge(graph, andedge$from, andedge$to)
-
-  #add OR edges
-  for (i in 1:length(andedge$from)){
-    graph = addEdge(
-      graph,
-      edgetype = 'or',
-      from = andedge$from[i],
-      to = andedge$to,
-      activation = andedge$activation[i],
-      weight = andedge$weight,
-      EC50 = andedge$EC50[i],
-      n = andedge$n[i]
-    )
+  
+  #remove edge from outedges list of source node
+  from$outedges = setdiff(from$outedges, edge$name)
+  
+  #remove edge from inedges list of target node
+  to$inedges = setdiff(to$inedges, edge$name)
+  
+  #modify logic equation of target node
+  logiceq = str_replace_all(to$logiceqn, ' ', '')
+  
+  ops = c('&', '|', '+', '!', '(', ')', '')
+  precedence = c(4, 3, 2, 5, 1, 1, 0)
+  
+  nn = paste0('!?', '\\b', from$name, '\\b')
+  opregexp = '[\\(\\)\\+\\|&]?'
+  regexp = paste0(opregexp, nn, opregexp)
+  expr = unlist(str_extract_all(logiceq, regexp))
+  exprops = unlist(str_split(expr, nn))
+  if (precedence[ops %in% exprops[2]] >= precedence[ops %in% exprops[1]]) {
+    newop = exprops[1]
+  } else{
+    newop = exprops[2]
   }
-
+  
+  logiceq = gsub(regexp, newop, logiceq)
+  if (logiceq %in% '') {
+    logiceq = as.character(NA)
+  }
+  to$logiceqn = logiceq
+  
+  #remove edge from edgeset of graph
+  graph@edgeset = graph@edgeset[!names(graph@edgeset) %in% edge$name]
+  getNode(graph, to$name) = to
+  getNode(graph, from$name) = from
+  
   return(graph)
 }
 
@@ -666,71 +606,22 @@ df2GraphGRN <- function(edges, nodes, propand = 0.3, loops = F, seed = sample.in
   colnames(edges)[1:3] = c('from', 'activation', 'to')
   colnames(nodes)[1] = c('node')
   
-  #missing interaction type
-  if (!'type' %in% colnames(edges)) {
-    edges['type'] = 'or'
-  }
-  
   #create graph object
   grn = new('GraphGRN')
   #add nodes
   for (i in 1:nrow(nodes)) {
     n = nodes[i, , drop = F]
-    grn = addNode(grn, n$node, n$tau, n$max, n$deg)
+    grn = addNodeRNA(grn, n$node, n$tau, n$max, n$deg)
   }
   
   #add edges
   for (i in 1:nrow(edges)) {
     e = edges[i, , drop = F]
-    grn = addEdge(grn, e$from, e$to, e$type, e$activation, e$weight, e$EC50, e$n)
+    grn = addEdgeReg(grn, e$from, e$to, e$type, e$activation, e$weight, e$EC50, e$n)
   }
-  
-  #convert propand proportion of or's to and's
-  #identify nodes with more than 2 inputs
-  edgeset = grn@edgeset
-  totaledges = length(edgeset)
-  nodesin = sapply(grn@nodeset, function(x) {
-    sum(as.numeric(sapply(edgeset[x$inedges], is, 'EdgeOr')))
-  })
   
   #sample and convert to and edges
   set.seed(seed)
-  andsize = c(2, 3, 4)
-  andprobs = c(1, 0, 0)
-  pAnd = 0
-  nfroms = 2
-  while (pAnd < propand) {
-    candtgts = names(nodesin)[nodesin >= nfroms]
-    
-    if (length(candtgts) == 0) {
-      if (nfroms == 2) {
-        msg = paste0('Only ', round(pAnd, digits = 2), '/', propand,
-                     ' AND edges could be created')
-        warning(msg)
-        break
-      } else{
-        nfroms = nfroms - 1
-        #change probalilities
-        andprobs[andsize > nfroms] = 0
-        andprobs = andprobs / sum(andprobs)
-        next
-      }
-    }
-    toNode = sample(candtgts, 1)
-
-    #sample nfrom(2) OR edges to combine
-    inedges = edgeset[getNode(grn, toNode)$inedges]
-    inedges = inedges[sapply(inedges, is, 'EdgeOr')]
-    fromNodes = sapply(sample(inedges, nfroms), function (x) x$from)
-
-    #convert OR to AND edge
-    grn = mergeOr(grn, fromNodes, toNode, 1)
-    nodesin[toNode] = nodesin[toNode] - nfroms
-    
-    #calculate proportions
-    pAnd = sum(sapply(grn@edgeset, is, 'EdgeAnd')) / length(grn@edgeset)
-    nfroms = sample(andsize, 1, prob = andprobs)
-  }
   
   return(grn)
 }
@@ -748,7 +639,7 @@ GraphGRN2df <- function(graph) {
   
   #create edge df
   #convert oredges
-  oredges = edges[sapply(edges, is, 'EdgeOr')]
+  oredges = edges
   if (length(oredges) == 0) {
     edgedf = data.frame('from' = as.numeric(), stringsAsFactors = F)
   } else{
