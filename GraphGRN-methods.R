@@ -617,7 +617,7 @@ df2GraphGRN <- function(edges, nodes, propand = 0.3, loops = F, seed = sample.in
   #add edges
   for (i in 1:nrow(edges)) {
     e = edges[i, , drop = F]
-    grn = addEdgeReg(grn, e$from, e$to, e$type, e$activation, e$weight, e$EC50, e$n)
+    grn = addEdgeReg(grn, e$from, e$to, e$activation, e$weight, e$EC50, e$n)
   }
   
   #sample and convert to and edges

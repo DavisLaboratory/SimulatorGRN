@@ -12,6 +12,8 @@ library(doParallel)
 library(foreach)
 library(igraph)
 library(stringr)
+library(MASS)
+library(mclust)
 
 #----case 2----
 grn=new('GraphGRN')
@@ -70,7 +72,7 @@ p2 = ggplot(ma, aes(E, H, colour = D)) + geom_point() + scale_color_distiller(pa
 multiplot(p1, p2, cols = 2)
 
 #----case 5----
-df = read.csv('sourceNets/Yeast_full.sif', sep = '\t', header = F, stringsAsFactors = F)
+df = read.csv('sourceNets/EColi_full.sif', sep = '\t', header = F, stringsAsFactors = F)
 edges = df
 maplogical = c('ac' = T, 're' = F, 'du' = F)
 edges[,2] = maplogical[edges[,2]]
@@ -78,7 +80,7 @@ edges[,2] = maplogical[edges[,2]]
 grnEColi = df2GraphGRN(edges, loops = F, propand = 0.1, seed = 34234)
 simEColi =new('SimulationGRN', graph = grnEColi, seed = 439591)
 t = Sys.time()
-emat = simulateDataset(simEColi, 500)
+emat = simulateDataset(simEColi, 100)
 t = Sys.time() - t
 print(t)
 
@@ -91,14 +93,35 @@ plot(g, vertex.size = 10, mark.group = dfl$nodes$name[dfl$nodes$type %in% 'and']
 
 simSmall =new('SimulationGRN', graph = grnSmall, seed = 528245)
 t = Sys.time()
-emat = simulateDataset(simSmall, 500)
+emat = simulateDataset(simSmall, 100)
 t = Sys.time() - t
 
 ma = as.data.frame(t(emat))
-ggplot(ma, aes(nlpD_rpoS, aldB, colour = yhdG_fis)) + geom_point() + scale_color_distiller(palette = 'YlOrRd', direction = 1)
-ggplot(ma, aes(yhdG_fis, aldB, colour = nlpD_rpoS)) + geom_point() + scale_color_distiller(palette = 'YlOrRd', direction = 1)
+ggplot(ma, aes(nlpD_rpoS, appY, colour = arcA)) + geom_point() + scale_color_distiller(palette = 'YlOrRd', direction = 1)
+ggplot(ma, aes(arcA, appY, colour = nlpD_rpoS)) + geom_point() + scale_color_distiller(palette = 'YlOrRd', direction = 1)
 par(mfrow = c(1,2))
 hist(emat['nlpD_rpoS',])
 hist(emat['yhdG_fis',])
+
+#----case 6----
+nsamp = 500
+simseed = 36
+set.seed(simseed)
+g = new('GraphGRN')
+for (n in LETTERS[1:4]) {
+  g = addNodeRNA(g, n)
+}
+g = addEdgeReg(g, 'A', 'C')
+g = addEdgeReg(g, 'B', 'D')
+g = addEdgeReg(g, 'C', 'D', activation = F)
+g = addEdgeReg(g, 'D', 'C', activation = F)
+
+sim$inputModels$A$mean = 0.45
+sim$inputModels$B$mean = 0.55
+sim$inputModels$A$sd = sim$inputModels$B$sd = 0.15
+
+sim = new('SimulationGRN', graph = g, seed = simseed)
+d = simulateDataset(sim, nsamp)
+plotds(d, getNode(g, 'C')$logiceqn, generateRateEqn(getNode(g, 'C'), g))
 
 

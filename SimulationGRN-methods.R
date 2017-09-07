@@ -71,7 +71,7 @@ createInputModels <- function(simulation) {
   
   for (n in innodes) {
     parms = list()
-    mxs = sample(c(1, 2), 1, prob = c(0.7, 0.3))
+    mxs = sample(c(1, 2), 1, prob = c(1, 0))
     
     if (mxs == 2) {
       parms = c(parms, 'prop' = runif(1, 0.2, 0.8))
@@ -127,6 +127,8 @@ simDataset <- function(simulation, numsamples, externalInputs) {
         }
       }
     }
+    
+    colnames(externalInputs) = innodes
   }
   
   #solve ODEs for different inputs
