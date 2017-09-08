@@ -162,14 +162,16 @@ g = addEdgeReg(g, 'B', 'C', activation = T)
 g = addEdgeReg(g, 'A', 'C', activation = T)
 
 sim = new('SimulationGRN', graph = g, seed = simseed)
-inputModels = sim$inputModels
 
 renderPlot({
   #model modification
-  inputModels$B$mean = c(as.numeric(input$b1mean), as.numeric(input$b2mean))
-  inputModels$A$mean = as.numeric(input$amean)
-  inputModels$A$sd = as.numeric(input$avar)
-  inputModels$B$sd = rep(as.numeric((input$bvar)), 2)
+  inputModels = list('A' = list('prop' = 1,
+                                'mean' = as.numeric(input$amean),
+                                'sd' = as.numeric(input$avar)),
+                     'B' = list('prop' = rep(0.5, 2),
+                                'mean' = as.numeric(c(input$b1mean, input$b2mean)),
+                                'sd' = as.numeric(rep(input$bvar, 2)))
+                     )
   sim$inputModels = inputModels
   
   #plot densities of inputs
