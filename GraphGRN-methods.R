@@ -164,6 +164,8 @@ NODE <- function(expr, node, graph){
   e = getEdge(graph, expr, node@name)
   expr = generateActivationEqn(e)
   expr = paste(e@weight, expr, sep = ' * ')
+  
+  return(expr)
 }
 
 NOT <- function(expr) {
@@ -259,12 +261,13 @@ validEdgeReg <- function(object) {
 	return(TRUE)
 }
 
-initEdgeReg <- function(.Object, ..., from, to, weight = 1, EC50 = 0.5, n = 1.39) {
+initEdgeReg <- function(.Object, ..., from, to, weight = 1, EC50 = 0.5, n = 1.39, activation = T) {
   .Object@from = from
   .Object@to = to
   .Object@weight = weight
   .Object@EC50 = EC50
   .Object@n = n
+  .Object@activation = activation
   
   #generate name
   name = paste(sort(from), collapse = '')
@@ -592,7 +595,71 @@ getAMC <- function(graph, directed = T) {
 }
 
 #----GraphGRN: Conversion functions----
-df2GraphGRN <- function(edges, nodes, propand = 0.3, loops = F, seed = sample.int(1E6, 1)) {
+genericLogicEqn <- function(node, graph, propor = 0.1, outdegree = NULL) {
+  if (is.null(outdegree)) {
+    am = getAM(graph)
+    outdegree = rowSums(am)
+  }
+  
+  #get regulators, activation status and outdegree
+  regs = graph@edgeset[node$inedges]
+  regact = sapply(regs, slot, 'activation')
+  regs = sapply(regs, slot, 'from')
+  
+  if (length(regs) == 0)
+    return(as.character(NA))
+  regdegree = outdegree[regs]
+  
+  tf = regs[regdegree == max(regdegree)][1]
+  
+  if (regact[regs %in% tf]) {
+    #tf is an activator
+    coacts = regs[!regs %in% tf & regact == T]
+    coreps = setdiff(regs, c(tf, coacts))
+    
+    logiceqn = tf
+    if (length(coacts) > 0){
+      actands = rep(' & ', length(coacts) - 1)
+      actands[runif(length(actands)) < propor] = ' | '
+      actands = c(actands, '')
+      coacteqn = paste(paste(coacts, actands, sep = ''), collapse = '')
+      logiceqn = paste(logiceqn, ' & (', coacteqn, ')', sep = '')
+    }
+    
+    if (length(coreps) > 0){
+      repands = rep(' | ', length(coreps) - 1)
+      repands[runif(length(repands)) < propor] = ' & '
+      repands = c(repands, '')
+      corepeqn = paste(paste('!', coreps, repands, sep = ''), collapse = '')
+      logiceqn = paste(logiceqn, ' & (', corepeqn, ')', sep = '')
+    }
+  } else{
+    #tf is a repressor
+    coreps = regs[!regs %in% tf & regact == F]
+    coacts = setdiff(regs, c(tf, coreps))
+    
+    logiceqn = paste('!', tf, sep = '')
+    if (length(coacts) > 0){
+      actands = rep(' & ', length(coacts) - 1)
+      actands[runif(length(actands)) < propor] = ' | '
+      actands = c(actands, '')
+      coacteqn = paste(paste(coacts, actands, sep = ''), collapse = '')
+      logiceqn = paste(logiceqn, ' | (', coacteqn, ')', sep = '')
+    }
+    
+    if (length(coreps) > 0){
+      repands = rep(' | ', length(coreps) - 1)
+      repands[runif(length(repands)) < propor] = ' & '
+      repands = c(repands, '')
+      corepeqn = paste(paste('!', coreps, repands, sep = ''), collapse = '')
+      logiceqn = paste(logiceqn, ' | (', corepeqn, ')', sep = '')
+    }
+  }
+  
+  return(logiceqn)
+}
+
+df2GraphGRN <- function(edges, nodes, propor = 0.1, loops = F, seed = sample.int(1E6, 1)) {
   if (missing(nodes) || is.null(nodes)) {
     nodes = data.frame('node' = unique(c(edges[ , 1], edges[ , 3])), stringsAsFactors = F)
   }
@@ -620,8 +687,14 @@ df2GraphGRN <- function(edges, nodes, propand = 0.3, loops = F, seed = sample.in
     grn = addEdgeReg(grn, e$from, e$to, e$activation, e$weight, e$EC50, e$n)
   }
   
-  #sample and convert to and edges
+  #create generic equations with random interactions
   set.seed(seed)
+  am = getAM(grn)
+  outdegree = rowSums(am)
+  for (n in grn@nodeset) {
+    logiceqn = genericLogicEqn(n, grn, propor, outdegree)
+    getNode(grn, n$name)$logiceqn = logiceqn
+  }
   
   return(grn)
 }
@@ -635,61 +708,34 @@ GraphGRN2df <- function(graph) {
   nodedf$rnamax = sapply(nodes, slot, 'spmax')
   nodedf$rnadeg = sapply(nodes, slot, 'spdeg')
   nodedf$tau = sapply(nodes, slot, 'tau')
-  nodedf$type = 'or'
+  nodedf$logiceqn = sapply(nodes, slot, 'logiceqn')
+  nodedf$type = sapply(nodes, class)
   
   #create edge df
   #convert oredges
-  oredges = edges
-  if (length(oredges) == 0) {
+  if (length(edges) == 0) {
     edgedf = data.frame('from' = as.numeric(), stringsAsFactors = F)
   } else{
-    edgedf = data.frame('from' = sapply(oredges, slot, 'from'), stringsAsFactors = F)
+    edgedf = data.frame('from' = sapply(edges, slot, 'from'), stringsAsFactors = F)
   }
-  edgedf$type = sapply(oredges, slot, 'activation')
-  edgedf$to = sapply(oredges, slot, 'to')
-  edgedf$weight = sapply(oredges, slot, 'weight')
-  edgedf$EC50 = sapply(oredges, slot, 'EC50')
-  edgedf$n = sapply(oredges, slot, 'n')
-  
-  #convert andedges
-  andedges = edges[sapply(edges, is, 'EdgeAnd')]
-  if (length(andedges) > 0){
-    andedgem = c()
-    andnodem = c()
-    for (e in andedges) {
-      es = c()
-      newnode = paste(sort(e$from), collapse = '')
-      andnodem = c(andnodem, newnode)
-      
-      #from to intermediate
-      es = cbind(e$from, e$activation, newnode, NA, e$EC50, e$n)
-      
-      #intermediate
-      es = rbind(es, c(newnode, T, e$to, e$weight, NA, NA))
-      andedgem = rbind(andedgem, es)
-    }
-    
-    colnames(andedgem) = colnames(edgedf)
-    edgedf = rbind(edgedf, andedgem)
-    
-    andnodem = cbind(unique(andnodem), NA, NA, NA, 'and')
-    colnames(andnodem) = colnames(nodedf)
-    nodedf = rbind(nodedf, andnodem)
-  }
+  edgedf$to = sapply(edges, slot, 'to')
+  edgedf$weight = sapply(edges, slot, 'weight')
+  edgedf$EC50 = sapply(edges, slot, 'EC50')
+  edgedf$n = sapply(edges, slot, 'n')
+  edgedf$type = sapply(edges, class)
   
   #convert types
   for (i in 2:4){
     nodedf[ , i] = as.numeric(nodedf[ , i])
   }
   
-  for (i in 4:6){
+  for (i in 3:5){
     edgedf[ , i] = as.numeric(edgedf[ , i])
   }
   
   #create list of results
   rownames(nodedf) = NULL
   rownames(edgedf) = NULL
-  edgedf = edgedf[ , c(1, 3, 2, 4:ncol(edgedf))]
   dflist = list('nodes' = nodedf, 'edges' = edgedf)
   
   return(dflist)

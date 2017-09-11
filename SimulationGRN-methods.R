@@ -18,7 +18,7 @@ validSimulationGRN <- function(object) {
 	return(TRUE)
 }
 
-initSimulationGRN <- function(.Object, ..., graph, noiseL = 0, noiseG = 0, seed = sample.int(1e6,1), inputModels = list()) {
+initSimulationGRN <- function(.Object, ..., graph, noiseL = 0, noiseG = 0, seed = sample.int(1e6,1), inputModels = list(), propBimodal = 0) {
 	.Object@graph = graph
 	.Object@noiseL = noiseL
 	.Object@noiseG = noiseG
@@ -26,7 +26,7 @@ initSimulationGRN <- function(.Object, ..., graph, noiseL = 0, noiseG = 0, seed 
 	.Object@inputModels = inputModels
 	
 	if (length(inputModels) == 0) {
-	  .Object = generateInputModels(.Object)
+	  .Object = generateInputModels(.Object, propBimodal)
 	}
 	
 	validObject(.Object)
@@ -62,7 +62,7 @@ solveSteadyState <- function(object, externalInputs) {
 	return(soln)
 }
 
-createInputModels <- function(simulation) {
+createInputModels <- function(simulation, propBimodal) {
   set.seed(simulation@seed)
   
   #create input models
@@ -71,7 +71,7 @@ createInputModels <- function(simulation) {
   
   for (n in innodes) {
     parms = list()
-    mxs = sample(c(1, 2), 1, prob = c(1, 0))
+    mxs = sample(c(1, 2), 1, prob = c(1 - propBimodal, propBimodal))
     
     if (mxs == 2) {
       parms = c(parms, 'prop' = runif(1, 0.2, 0.8))

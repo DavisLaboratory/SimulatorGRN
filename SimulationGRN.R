@@ -61,7 +61,7 @@ setMethod(
 #----SimulationGRN: generateInputModels----
 setGeneric(
   name = 'generateInputModels',
-  def = function(simulation) {
+  def = function(simulation, propBimodal) {
     standardGeneric('generateInputModels')
   }
 )

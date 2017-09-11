@@ -154,7 +154,8 @@ setClass(
 	contains = 'Edge',
 	slots = list(
 	  EC50 = 'numeric',
-	  n = 'numeric'
+	  n = 'numeric',
+	  activation = 'logical'
 	)
 )
 
@@ -310,8 +311,8 @@ setMethod(
 		#create default edge
 		edgeObj = new('EdgeReg', from = from, to = to)
 		#modify default edge with provided parameters
-		if(missing(activation) || is.null(activation))
-			activation = T
+		if(!missing(activation) && !is.null(activation))
+		  edgeObj$activation = activation
 		if(!missing(weight) && !is.null(weight))
 			edgeObj$weight = weight
 		if(!missing(EC50) && !is.null(EC50))
@@ -327,7 +328,7 @@ setMethod(
 		tonode$inedges = c(tonode$inedges, edgeObj$name)
 		#modify logic equation of target node
 		fromeqn = from
-		if (!activation) {
+		if (!edgeObj$activation) {
 		  fromeqn = paste0('!', fromeqn)
 		}
 		if (is.na(tonode$logiceqn)) {

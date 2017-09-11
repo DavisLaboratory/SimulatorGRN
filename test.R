@@ -4,7 +4,6 @@ source('SimulationGRN-methods.R')
 source('SimulationGRN.R')
 library(nleqslv)
 library(distr)
-library(foreach)
 library(ggplot2)
 library(grid)
 library(parallel)
@@ -14,6 +13,7 @@ library(igraph)
 library(stringr)
 library(MASS)
 library(mclust)
+library(dnet)
 
 #----case 2----
 grn=new('GraphGRN')
@@ -36,92 +36,34 @@ print(generateRateEqn(grn@nodeset[['C']], grn))
 print(generateRateEqn(grn@nodeset[['D']], grn))
 
 #----case 3----
-grn2=new('GraphGRN')
-for (i in LETTERS[1:12]){
-	grn2=addNodeRNA(grn2,i)
-}
-
-grn2=addEdgeReg(grn2,'A','L',activation=T)
-grn2=addEdgeReg(grn2,'A','D',activation=T)
-grn2=addEdgeReg(grn2,'D','G',activation=T)
-grn2=addEdgeReg(grn2,'B','E',activation=T)
-grn2=addEdgeReg(grn2,'E','I',activation=T)
-grn2=addEdgeReg(grn2,'C','F',activation=T)
-grn2=addEdgeReg(grn2,'F','K',activation=T)
-grn2=addEdgeReg(grn2,'D','H',activation=T)
-grn2=addEdgeReg(grn2,'E','H',activation=T)
-grn2=addEdgeReg(grn2,'E','J',activation=T)
-grn2=addEdgeReg(grn2,'F','J',activation=F)
-
-ode=generateODE(grn2)
-exprs=numeric(9)
-names(exprs)=LETTERS[4:12]
-ext=c(0.6,0.6,0.6)
-names(ext)=LETTERS[1:3]
-nleqslv(exprs,ode,jac=NULL,ext,jacobian=T)
-
-#----case 4----
-sim1=new('SimulationGRN', graph = grn2, seed = 360)
-samp = 500
-ma = simulateDataset(sim1, samp)
-
-hist(ma, breaks = 100)
-ma = as.data.frame(t(ma))
-p1 = ggplot(ma, aes(E, J, colour = F)) + geom_point() + scale_color_distiller(palette = 'YlOrRd', direction = 1)
-p2 = ggplot(ma, aes(E, H, colour = D)) + geom_point() + scale_color_distiller(palette = 'YlOrRd', direction = 1)
-multiplot(p1, p2, cols = 2)
-
-#----case 5----
 df = read.csv('sourceNets/EColi_full.sif', sep = '\t', header = F, stringsAsFactors = F)
 edges = df
 maplogical = c('ac' = T, 're' = F, 'du' = F)
 edges[,2] = maplogical[edges[,2]]
 
-grnEColi = df2GraphGRN(edges, loops = F, propand = 0.1, seed = 34234)
-simEColi =new('SimulationGRN', graph = grnEColi, seed = 439591)
-t = Sys.time()
-emat = simulateDataset(simEColi, 100)
-t = Sys.time() - t
-print(t)
+#read in network and create a sampled network
+grnEColi = df2GraphGRN(edges, loops = F, propor = 0.1, seed = 36)
+grnSmall = sampleGraph(grnEColi, 20, minregs = 10, seed = 36)
 
-#plot graph
-grnSmall = sampleGraph(grnEColi, 20, minregs = 10, seed = 173153)
-dfl = GraphGRN2df(grnSmall)
-dfl$edges = dfl$edges[, c(1, 3, 2, 4:6)]
-g = graph_from_data_frame(d = dfl$edges, directed = T, vertices = dfl$nodes)
-plot(g, vertex.size = 10, mark.group = dfl$nodes$name[dfl$nodes$type %in% 'and'])
+#create simulators
+simEColi =new('SimulationGRN', graph = grnEColi, seed = 36, propBimodal = 0)
+simSmall =new('SimulationGRN', graph = grnEColi, seed = 36, propBimodal = 0)
 
-simSmall =new('SimulationGRN', graph = grnSmall, seed = 528245)
-t = Sys.time()
-emat = simulateDataset(simSmall, 100)
-t = Sys.time() - t
-
-ma = as.data.frame(t(emat))
-ggplot(ma, aes(nlpD_rpoS, appY, colour = arcA)) + geom_point() + scale_color_distiller(palette = 'YlOrRd', direction = 1)
-ggplot(ma, aes(arcA, appY, colour = nlpD_rpoS)) + geom_point() + scale_color_distiller(palette = 'YlOrRd', direction = 1)
-par(mfrow = c(1,2))
-hist(emat['nlpD_rpoS',])
-hist(emat['yhdG_fis',])
-
-#----case 6----
-nsamp = 500
+#Total simulation params
+nsamp = 100
 simseed = 36
 set.seed(simseed)
-g = new('GraphGRN')
-for (n in LETTERS[1:4]) {
-  g = addNodeRNA(g, n)
-}
-g = addEdgeReg(g, 'A', 'C')
-g = addEdgeReg(g, 'B', 'D')
-g = addEdgeReg(g, 'C', 'D', activation = F)
-g = addEdgeReg(g, 'D', 'C', activation = F)
 
-sim$inputModels$A$mean = 0.45
-sim$inputModels$B$mean = 0.55
-sim$inputModels$A$sd = sim$inputModels$B$sd = 0.15
+#modify input models
+prop = runif(1, 0.2, 0.8)
+prop = c(prop, 1 - prop)
+mu = c(runif(1, 0.1, 0.5), runif(1, 0.5, 0.9))
+maxsd = pmin(mu, 1 - mu) / 3
+sdev = sapply(maxsd, function(x) runif(1, 0.01, x))
 
-sim = new('SimulationGRN', graph = g, seed = simseed)
-d = simulateDataset(sim, nsamp)
-plotds(d, getNode(g, 'C')$logiceqn, generateRateEqn(getNode(g, 'C'), g))
+simEColi$inputModels$purR = list('prop' = prop,
+                    'mean' = mu,
+                    'sd' = sdev)
+datamat = simulateDataset(simEColi, nsamp)
 
 
