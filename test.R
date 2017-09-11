@@ -13,7 +13,6 @@ library(igraph)
 library(stringr)
 library(MASS)
 library(mclust)
-library(dnet)
 
 #----case 2----
 grn=new('GraphGRN')

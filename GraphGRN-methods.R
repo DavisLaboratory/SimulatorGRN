@@ -594,6 +594,38 @@ getAMC <- function(graph, directed = T) {
   return(A)
 }
 
+randomizeParamsC <- function(graph, type = 'linear') {
+  ec50range = c(0.2, 0.8)
+  nrange = c(1.39, 6)
+  
+  if (type %in% 'linear') {
+    ec50range = c(1.01, 1.01)
+    nrange = c(1.39, 1.39)
+  } else if (type %in% 'linear-like') {
+    ec50range = c(0.4, 0.6)
+    nrange = c(1.01, 1.7)
+  } else if (type %in% 'exponential') {
+    ec50range = c(0.2, 0.8)
+    nrange = c(1.01, 1.7)
+  } else if (type %in% 'sigmoidal') {
+    ec50range = c(0.4, 0.6)
+    nrange = c(1.39, 6)
+  } else if (type %in% 'all') {
+    ec50range = c(0.2, 0.8)
+    nrange = c(1.39, 6)
+  } else{
+    stop('Unknown type specified. Possible types: linear, linear-like, exponential, sigmoidal, all')
+  }
+  
+  #modify parameters
+  for (e in graph@edgeset) {
+    getEdge(graph, e$from, e$to)$EC50 = runif(1, ec50range[1], ec50range[2])
+    getEdge(graph, e$from, e$to)$n = runif(1, nrange[1], nrange[2])
+  }
+  
+  return(graph)
+}
+
 #----GraphGRN: Conversion functions----
 genericLogicEqn <- function(node, graph, propor = 0.1, outdegree = NULL) {
   if (is.null(outdegree)) {
