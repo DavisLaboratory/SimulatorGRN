@@ -155,5 +155,73 @@ simDataset <- function(simulation, numsamples, externalInputs) {
   return(emat)
 }
 
+#netbenchmark strategy
+addNoiseC <- function(simulation, simdata){
+  genesds = apply(simdata, 1, sd)
+  noiseLsds = runif(length(genesds), 0.8 * simulation@noiseL, 1.2 * simulation@noiseL)
+  noiseLsds = noiseLsds * genesds
+  
+  noiseGsds = runif(length(genesds), 0.8 * simulation@noiseG, 1.2 * simulation@noiseG)
+  noiseGsds = noiseGsds * mean(genesds)
+  
+  #generate noise matrices
+  set.seed(simulation@seed)
+  noisematL = c()
+  noisematG = c()
+  for (i in 1:length(genesds)) {
+    noisematL = rbind(noisematL, rnorm(ncol(simdata), 0, noiseLsds[i]))
+    noisematG = rbind(noisematG, rnorm(ncol(simdata), 0, noiseGsds[i]))
+  }
+  
+  rownames(noisematL) = rownames(noisematG) = rownames(simdata)
+  colnames(noisematL) = colnames(noisematG) = colnames(simdata)
+  
+  #add generated noise to data
+  noisydata = simdata
+  noisydata = log(exp(noisydata) + noisematG)
+  noisydata = noisydata + noisematL
+  
+  #ensure range of data is 0-1
+  noisydata[noisydata > 1] = 1
+  noisydata[noisydata < 0] = 0
+  
+  return(noisydata)
+}
+
+generateSensMat <- function(simulation, pertb) {
+  set.seed(simulation@seed)
+  graph = simulation@graph
+  
+  #original outputs, with no perturbations
+  inputvec = runif(length(getInputNodes(graph)), pertb + 1E-4, 1)
+  names(inputvec) = getInputNodes(graph)
+  dm0 = solveSteadyState(simulation, inputvec)$x
+  dm0 = c(inputvec, dm0)
+  
+  sensmat = c()
+  for (n in nodenames(graph)) {
+    #apply perturbation, affects spmax of node
+    if (n %in% names(inputvec)) {
+      inputvec[n] = inputvec[n] - pertb
+      dm = solveSteadyState(simulation, inputvec)$x
+      dm = c(inputvec, dm)
+      inputvec[n] = inputvec[n] + pertb
+    } else{
+      getNode(simulation@graph, n)$spmax = 1 - pertb
+      dm = solveSteadyState(simulation, inputvec)$x
+      dm = c(inputvec, dm)
+    }
+    
+    #calculate sensitivity
+    sensmat = rbind(sensmat, (dm - dm0)/-pertb * getNode(graph, n)$spmax/dm0)
+    
+    #reset params to old params
+    simulation@graph = graph
+  }
+  
+  rownames(sensmat) = nodenames(graph)
+  sensmat = sensmat[, rownames(sensmat)]
+  return(sensmat)
+}
 
 

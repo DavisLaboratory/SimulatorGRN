@@ -35,34 +35,32 @@ print(generateRateEqn(grn@nodeset[['C']], grn))
 print(generateRateEqn(grn@nodeset[['D']], grn))
 
 #----case 3----
-df = read.csv('sourceNets/EColi_full.sif', sep = '\t', header = F, stringsAsFactors = F)
-edges = df
-maplogical = c('ac' = T, 're' = F, 'du' = F)
-edges[,2] = maplogical[edges[,2]]
+grn=new('GraphGRN')
+grn=addNodeRNA(grn, 'A')
+grn=addNodeRNA(grn, 'B')
+grn=addNodeRNA(grn, 'C')
+grn=addEdgeReg(grn,'A','C')
+grn=addEdgeReg(grn,'B','C')
+sim = new('SimulationGRN', graph = grn, seed = 36)
 
-#read in network and create a sampled network
-grnEColi = df2GraphGRN(edges, loops = F, propor = 0.1, seed = 36)
-grnSmall = sampleGraph(grnEColi, 20, minregs = 10, seed = 36)
+sim$inputModels = list('A' = list('prop' = c(0.5, 0.5),
+                                  'mean' = c(0.5, 0.7),
+                                  'sd' = c(0.05, 0.05)),
+                       'B' = list('prop' = 1,
+                                  'mean' = 0.5,
+                                  'sd' = 0.1))
+sim$noiseL = 0.2
 
-#create simulators
-simEColi =new('SimulationGRN', graph = grnEColi, seed = 36, propBimodal = 0)
-simSmall =new('SimulationGRN', graph = grnEColi, seed = 36, propBimodal = 0)
+dm = simulateDataset(sim, 100)
+dm = addNoise(sim, dm)
+df = as.data.frame(t(dm))
+df$cond = Mclust(df$A, verbose = F)$classification
+ggplot(df, aes(B, C)) +geom_point() + facet_wrap(~cond)
 
-#Total simulation params
-nsamp = 100
-simseed = 36
-set.seed(simseed)
-
-#modify input models
-prop = runif(1, 0.2, 0.8)
-prop = c(prop, 1 - prop)
-mu = c(runif(1, 0.1, 0.5), runif(1, 0.5, 0.9))
-maxsd = pmin(mu, 1 - mu) / 3
-sdev = sapply(maxsd, function(x) runif(1, 0.01, x))
-
-simEColi$inputModels$purR = list('prop' = prop,
-                    'mean' = mu,
-                    'sd' = sdev)
-datamat = simulateDataset(simEColi, nsamp)
+set.seed(36)
+dm = log(dm * exp(rnorm(3, 8, 2)) %*% t(rep(1, 100)))
+df = as.data.frame(t(dm))
+df$cond = Mclust(df$A, verbose = F)$classification
+ggplot(df, aes(B, C)) +geom_point() + facet_wrap(~cond)
 
 

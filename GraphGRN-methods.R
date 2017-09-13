@@ -626,7 +626,6 @@ randomizeParamsC <- function(graph, type = 'linear') {
   return(graph)
 }
 
-#----GraphGRN: Conversion functions----
 genericLogicEqn <- function(node, graph, propor = 0.1, outdegree = NULL) {
   if (is.null(outdegree)) {
     am = getAM(graph)
@@ -655,7 +654,11 @@ genericLogicEqn <- function(node, graph, propor = 0.1, outdegree = NULL) {
       actands[runif(length(actands)) < propor] = ' | '
       actands = c(actands, '')
       coacteqn = paste(paste(coacts, actands, sep = ''), collapse = '')
-      logiceqn = paste(logiceqn, ' & (', coacteqn, ')', sep = '')
+      if (length(coacts) == 1) {
+        logiceqn = paste(logiceqn, ' & ', coacteqn, sep = '')
+      } else{
+        logiceqn = paste(logiceqn, ' & (', coacteqn, ')', sep = '')
+      }
     }
     
     if (length(coreps) > 0){
@@ -663,7 +666,11 @@ genericLogicEqn <- function(node, graph, propor = 0.1, outdegree = NULL) {
       repands[runif(length(repands)) < propor] = ' & '
       repands = c(repands, '')
       corepeqn = paste(paste('!', coreps, repands, sep = ''), collapse = '')
-      logiceqn = paste(logiceqn, ' & (', corepeqn, ')', sep = '')
+      if (length(coreps) == 1) {
+        logiceqn = paste(logiceqn, ' & ', corepeqn, sep = '')
+      } else{
+        logiceqn = paste(logiceqn, ' & (', corepeqn, ')', sep = '')
+      }
     }
   } else{
     #tf is a repressor
@@ -676,7 +683,11 @@ genericLogicEqn <- function(node, graph, propor = 0.1, outdegree = NULL) {
       actands[runif(length(actands)) < propor] = ' | '
       actands = c(actands, '')
       coacteqn = paste(paste(coacts, actands, sep = ''), collapse = '')
-      logiceqn = paste(logiceqn, ' | (', coacteqn, ')', sep = '')
+      if (length(coacts) == 1) {
+        logiceqn = paste(logiceqn, ' | ', coacteqn, sep = '')
+      } else{
+        logiceqn = paste(logiceqn, ' | (', coacteqn, ')', sep = '')
+      }
     }
     
     if (length(coreps) > 0){
@@ -684,13 +695,18 @@ genericLogicEqn <- function(node, graph, propor = 0.1, outdegree = NULL) {
       repands[runif(length(repands)) < propor] = ' & '
       repands = c(repands, '')
       corepeqn = paste(paste('!', coreps, repands, sep = ''), collapse = '')
-      logiceqn = paste(logiceqn, ' | (', corepeqn, ')', sep = '')
+      if (length(coreps) == 1) {
+        logiceqn = paste(logiceqn, ' | ', corepeqn, sep = '')
+      } else{
+        logiceqn = paste(logiceqn, ' | (', corepeqn, ')', sep = '')
+      }
     }
   }
   
   return(logiceqn)
 }
 
+#----GraphGRN: Conversion functions----
 df2GraphGRN <- function(edges, nodes, propor = 0.1, loops = F, seed = sample.int(1E6, 1)) {
   if (missing(nodes) || is.null(nodes)) {
     nodes = data.frame('node' = unique(c(edges[ , 1], edges[ , 3])), stringsAsFactors = F)
@@ -754,6 +770,7 @@ GraphGRN2df <- function(graph) {
   edgedf$weight = sapply(edges, slot, 'weight')
   edgedf$EC50 = sapply(edges, slot, 'EC50')
   edgedf$n = sapply(edges, slot, 'n')
+  edgedf$activation = sapply(edges, slot, 'activation')
   edgedf$type = sapply(edges, class)
   
   #convert types
@@ -771,6 +788,13 @@ GraphGRN2df <- function(graph) {
   dflist = list('nodes' = nodedf, 'edges' = edgedf)
   
   return(dflist)
+}
+
+GraphGRN2igraph <- function(graph, directed = T) {
+  dflist = GraphGRN2df(graph)
+  ig = graph_from_data_frame(d = dflist$edges, directed = directed, vertices = dflist$nodes)
+  
+  return(ig)
 }
 
 #----All classes----

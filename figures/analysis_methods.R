@@ -167,8 +167,8 @@ dicer.score<-function(emat,conditions){
 	r2=cor(t(expr2))
 	mu1=mean(r1)
 	mu2=mean(r2)
-	var1=var(r1)
-	var2=var(r2)
+	var1=var(as.numeric(r1))
+	var2=var(as.numeric(r2))
 	tscore=((r1-r2)-(mu1-mu2))/sqrt(var1+var2)
 	return(tscore)
 }

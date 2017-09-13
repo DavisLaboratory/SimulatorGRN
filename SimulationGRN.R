@@ -92,5 +92,40 @@ setMethod(
   definition = simDataset
 )
 
+#----SimulationGRN: addNoise----
+setGeneric(
+  name = 'addNoise',
+  def = function(simulation, simdata) {
+    standardGeneric('addNoise')
+  }
+)
+
+setMethod(
+  f = 'addNoise',
+  signature = c('SimulationGRN', 'matrix'),
+  definition = addNoiseC
+)
+
+#----SimulationGRN: sensitivityAnalysis----
+setGeneric(
+  name = 'sensitivityAnalysis',
+  def = function(simulation, pertb) {
+    standardGeneric('sensitivityAnalysis')
+  }
+)
+
+setMethod(
+  f = 'sensitivityAnalysis',
+  signature = c('SimulationGRN', 'numeric'),
+  definition = generateSensMat
+)
+
+setMethod(
+  f = 'sensitivityAnalysis',
+  signature = c('SimulationGRN', 'missing'),
+  definition = function(simulation, pertb) {
+    generateSensMat(simulation, 0.25)
+  }
+)
 
 
