@@ -24,6 +24,7 @@ edges[,2] = maplogical[edges[,2]]
 
 #read in network and create simulator object
 grnEColi = df2GraphGRN(edges, loops = F, propor = 0.1, seed = 36)
+grnEColi = randomizeParams(grnEColi, 'linear-like', seed = 36)
 simEColi =new('SimulationGRN', graph = grnEColi, seed = 36, propBimodal = 0, noiseL = 0.1, noiseG = 0.1)
 
 #----generate data----
@@ -82,6 +83,7 @@ plotInference <- function(graph, modulator, scores, topn = 100) {
 
 #generate a random sensitivity matrix
 sensmat = sensitivityAnalysis(simEColi)
+save(simEColi, sensmat, file = 'simdata/sensitivityEColi.RData')
 
 #make inference
 classf = Mclust(noisydatamat[modinput,], verbose = F)$classification
@@ -95,9 +97,10 @@ zsc[is.infinite(zsc)] = 0
 # diffcoexsc = diffcoex.score(noisydatamat, classf)
 # mindysc = mindy.score(noisydatamat, classf)
 
-layout(matrix(c(1,2,3,3), 2, 2, byrow = TRUE))
-plotInference(grnEColi, modinput, zsc)
-layout(matrix(c(1), 1, 1, byrow = TRUE))
+# layout(matrix(c(1,2,3,3), 2, 2, byrow = TRUE))
+par(mfrow=c(1,2))
+plotInference(grnEColi, modinput, caisc)
+# layout(matrix(c(1), 1, 1, byrow = TRUE))
 
 
 
@@ -112,13 +115,15 @@ layout(matrix(c(1), 1, 1, byrow = TRUE))
 
 
 
-
-
+simEColi$noiseG = 0.1
+simEColi$noiseL = 0
+noisydatamat = addNoise(simEColi, datamat)
 
 #plot inference results
 df = as.data.frame(t(noisydatamat))
 df$cond = Mclust(df[,modinput], verbose = F)$classification
 ggplot(df, aes(metR, glyA, colour = purR)) + geom_point() + facet_wrap(~cond)
+ggplot(df, aes(rpoE_rseABC, mglBAC, colour = purR)) + geom_point() + facet_wrap(~cond)
 
 expr1=noisydatamat[,classf==1]
 expr2=noisydatamat[,classf==2]

@@ -69,7 +69,7 @@ diffcoex.score<-function(emat,conditions,beta=1,cor.method='pearson'){
 ebcoexpress.score<-function(emat,conditions,rand.seed=36,plot=F){
 	set.seed(rand.seed)
 	pat=ebPatterns(c("1,1","1,2"))
-	D=makeMyD(emat, conditions, useBWMC=TRUE)
+	D=makeMyD(emat, conditions, useBWMC=FALSE)
 	initHP=initializeHP(D, conditions)
 	oout=ebCoexpressOneStep(D, conditions, pat, initHP)
 	result1=oout$POSTPROBS

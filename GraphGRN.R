@@ -575,14 +575,14 @@ setMethod(
 #----GraphGRN: randomizeParams----
 setGeneric(
   name = 'randomizeParams',
-  def = function(graph, type) {
+  def = function(graph, type, seed) {
     standardGeneric('randomizeParams')
   }
 )
 
 setMethod(
   f = 'randomizeParams',
-  signature = c('GraphGRN', 'character'),
+  signature = c('GraphGRN', 'character', 'numeric'),
   definition = randomizeParamsC
 )
 

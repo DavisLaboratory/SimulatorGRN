@@ -178,7 +178,7 @@ addNoiseC <- function(simulation, simdata){
   
   #add generated noise to data
   noisydata = simdata
-  noisydata = log(exp(noisydata) + noisematG)
+  noisydata = log(noisydata + exp(noisematG))
   noisydata = noisydata + noisematL
   
   #ensure range of data is 0-1

@@ -44,12 +44,12 @@ grn=addEdgeReg(grn,'B','C')
 sim = new('SimulationGRN', graph = grn, seed = 36)
 
 sim$inputModels = list('A' = list('prop' = c(0.5, 0.5),
-                                  'mean' = c(0.5, 0.7),
+                                  'mean' = c(0.5, 0.6),
                                   'sd' = c(0.05, 0.05)),
                        'B' = list('prop' = 1,
                                   'mean' = 0.5,
                                   'sd' = 0.1))
-sim$noiseL = 0.2
+sim$noiseL = 0.3
 
 dm = simulateDataset(sim, 100)
 dm = addNoise(sim, dm)

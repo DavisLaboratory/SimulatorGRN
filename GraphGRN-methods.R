@@ -594,7 +594,7 @@ getAMC <- function(graph, directed = T) {
   return(A)
 }
 
-randomizeParamsC <- function(graph, type = 'linear') {
+randomizeParamsC <- function(graph, type = 'linear', seed) {
   ec50range = c(0.2, 0.8)
   nrange = c(1.39, 6)
   
