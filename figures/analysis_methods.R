@@ -15,6 +15,21 @@ z.score<-function(emat,conditions){
 	return(z)
 }
 
+z.score.sp<-function(emat,conditions){
+	expr1=emat[,conditions==1]
+	expr2=emat[,conditions==2]
+	
+	#apply the Fisher transformation
+	r1=cor(t(expr1), method = 'spearman')
+	r2=cor(t(expr2), method = 'spearman')
+	z1=atanh(r1)
+	z2=atanh(r2)
+	z=(z1-z2)/sqrt(1.06/(sum(conditions==1)-3)+1.06/(sum(conditions==2)-3))
+	z[is.nan(z)]=0
+	
+	return(z)
+}
+
 magic.score<-function(emat,conditions){
 	expr1=emat[,conditions==1]
 	expr2=emat[,conditions==2]

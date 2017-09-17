@@ -15,6 +15,7 @@ library(stringr)
 library(MASS)
 library(mclust)
 library(EBcoexpress)
+library(diggit)
 
 #----read network----
 df = read.csv('sourceNets/EColi_full.sif', sep = '\t', header = F, stringsAsFactors = F)
@@ -34,7 +35,7 @@ simseed = 36
 set.seed(simseed)
 
 #modify input models
-modinput = 'purR'
+modinput = 'rpoE_rseABC'
 prop = runif(1, 0.2, 0.8)
 prop = c(prop, 1 - prop)
 mu = c(runif(1, 0.1, 0.5), runif(1, 0.5, 0.9))
@@ -63,7 +64,7 @@ plotInference <- function(graph, modulator, scores, topn = 100) {
   V(net)$color = 1
   V(net)$color[V(net)$name %in% modulator] = 2
   E(net)$arrow.size = .05
-  E(net)$color = 'gray80'
+  E(net)$color = 'gray36'
   E(net)$color[!is.na(E(net)$activation) & E(net)$activation] = 'darkgreen'
   E(net)$color[!is.na(E(net)$activation) & !E(net)$activation] = 'red'
   E(net)$width = 1.5
@@ -82,25 +83,67 @@ plotInference <- function(graph, modulator, scores, topn = 100) {
 }
 
 #generate a random sensitivity matrix
-sensmat = sensitivityAnalysis(simEColi)
-save(simEColi, sensmat, file = 'simdata/sensitivityEColi.RData')
+iEcoli = GraphGRN2igraph(grnEColi)
+inputs = sapply(simEColi$inputModels, function(x) x$mean[1])
+pertbNodes = c(modinput, adjacent_vertices(iEcoli, modinput)[[1]]$name)
+pertbNodes = unique(c(pertbNodes, adjacent_vertices(iEcoli, pertbNodes)[[1]]$name))
+sensmat = sensitivityAnalysis(simEColi, 0.25, inputs)
 
 #make inference
 classf = Mclust(noisydatamat[modinput,], verbose = F)$classification
-zsc = z.score(noisydatamat, classf)
+zsc = z.score.sp(noisydatamat, classf)
 zsc[is.infinite(zsc)] = 0
-# ftgi = ftgi.score(noisydatamat, classf)
-# ebsc = ebcoexpress.score(noisydatamat, classf)
-# caisc = cai.score(noisydatamat, classf)
-# magicsc = magic.score(noisydatamat, classf)
-# dicersc = dicer.score(noisydatamat, classf)
-# diffcoexsc = diffcoex.score(noisydatamat, classf)
-# mindysc = mindy.score(noisydatamat, classf)
 
-# layout(matrix(c(1,2,3,3), 2, 2, byrow = TRUE))
-par(mfrow=c(1,2))
-plotInference(grnEColi, modinput, caisc)
-# layout(matrix(c(1), 1, 1, byrow = TRUE))
+cl = makeCluster(5)
+registerDoParallel(cl)
+ftgisc = ftgi.score(noisydatamat, classf)
+stopCluster(cl)
+
+ebsc = ebcoexpress.score(noisydatamat, classf)
+caisc = cai.score(noisydatamat, classf, thresh.method = 'score')
+magicsc = magic.score(noisydatamat, classf)
+dicersc = dicer.score(noisydatamat, classf)
+diffcoexsc = diffcoex.score(noisydatamat, classf)
+mindysc = mindy.score(noisydatamat, classf, ncores = 5)
+
+#store output of runs
+topn = 180
+fname = paste0('figures/infPerfTOP', topn, '_', modinput, '_', simseed, '.pdf')
+pdf(file = fname, width = 12, onefile = T)
+
+par(mfrow=c(1,2), oma = c(0, 0, 2, 0))
+plotInference(grnEColi, modinput, zsc, topn)
+mtext("Z-score", outer = T, cex = 1.5)
+
+par(mfrow=c(1,2), oma = c(0, 0, 2, 0))
+plotInference(grnEColi, modinput, ebsc, topn)
+mtext("EBCo-express", outer = T, cex = 1.5)
+
+par(mfrow=c(1,2), oma = c(0, 0, 2, 0))
+plotInference(grnEColi, modinput, mindysc, topn)
+mtext("MINDy", outer = T, cex = 1.5)
+
+par(mfrow=c(1,2), oma = c(0, 0, 2, 0))
+plotInference(grnEColi, modinput, magicsc, topn)
+mtext("MAGIC", outer = T, cex = 1.5)
+
+par(mfrow=c(1,2), oma = c(0, 0, 2, 0))
+plotInference(grnEColi, modinput, caisc, topn)
+mtext("Cai", outer = T, cex = 1.5)
+
+par(mfrow=c(1,2), oma = c(0, 0, 2, 0))
+plotInference(grnEColi, modinput, dicersc, topn)
+mtext("DICER", outer = T, cex = 1.5)
+
+par(mfrow=c(1,2), oma = c(0, 0, 2, 0))
+plotInference(grnEColi, modinput, diffcoexsc, topn)
+mtext("DiffCoEx", outer = T, cex = 1.5)
+
+par(mfrow=c(1,2), oma = c(0, 0, 2, 0))
+plotInference(grnEColi, modinput, ftgisc, topn)
+mtext("FTGI", outer = T, cex = 1.5)
+
+dev.off()
 
 
 
@@ -114,22 +157,22 @@ plotInference(grnEColi, modinput, caisc)
 
 
 
-
-simEColi$noiseG = 0.1
-simEColi$noiseL = 0
-noisydatamat = addNoise(simEColi, datamat)
-
-#plot inference results
-df = as.data.frame(t(noisydatamat))
-df$cond = Mclust(df[,modinput], verbose = F)$classification
-ggplot(df, aes(metR, glyA, colour = purR)) + geom_point() + facet_wrap(~cond)
-ggplot(df, aes(rpoE_rseABC, mglBAC, colour = purR)) + geom_point() + facet_wrap(~cond)
-
-expr1=noisydatamat[,classf==1]
-expr2=noisydatamat[,classf==2]
-r1=cor(t(expr1), method = 'spearman')
-r2=cor(t(expr2), method = 'spearman')
-plotdf = data.frame('r1' = as.numeric(r1), 'r2' = as.numeric(r2), 'z' = as.numeric(abs(zsc)))
-plotdf = cbind(plotdf, expand.grid(rownames(datamat), rownames(datamat)))
-ggplot(plotdf[plotdf$z > 3.5,], aes(r1, r2, colour = z)) + geom_point()
+# 
+# simEColi$noiseG = 0.1
+# simEColi$noiseL = 0
+# noisydatamat = addNoise(simEColi, datamat)
+# 
+# #plot inference results
+# df = as.data.frame(t(noisydatamat))
+# df$cond = Mclust(df[,modinput], verbose = F)$classification
+# ggplot(df, aes(metR, glyA, colour = purR)) + geom_point() + facet_wrap(~cond)
+# ggplot(df, aes(rpoE_rseABC, mglBAC, colour = purR)) + geom_point() + facet_wrap(~cond)
+# 
+# expr1=noisydatamat[,classf==1]
+# expr2=noisydatamat[,classf==2]
+# r1=cor(t(expr1), method = 'spearman')
+# r2=cor(t(expr2), method = 'spearman')
+# plotdf = data.frame('r1' = as.numeric(r1), 'r2' = as.numeric(r2), 'z' = as.numeric(abs(zsc)))
+# plotdf = cbind(plotdf, expand.grid(rownames(datamat), rownames(datamat)))
+# ggplot(plotdf[plotdf$z > 3.5,], aes(r1, r2, colour = z)) + geom_point()
 

@@ -188,28 +188,39 @@ addNoiseC <- function(simulation, simdata){
   return(noisydata)
 }
 
-generateSensMat <- function(simulation, pertb) {
+generateSensMat <- function(simulation, pertb, inputs = NULL, pertbNodes = NULL) {
   set.seed(simulation@seed)
   graph = simulation@graph
   
+  if (is.null(inputs)) {
+    inputs = runif(length(getInputNodes(graph)), pertb + 1E-4, 1)
+    names(inputs) = getInputNodes(graph)
+  }else if (!all(getInputNodes(graph) %in% names(inputs))) {
+    stop('Missing Inputs')
+  }
+  
+  if (is.null(pertbNodes)) {
+    pertbNodes = nodenames(graph)
+  } else{
+    pertbNodes = intersect(pertbNodes, nodenames(graph))
+  }
+  
   #original outputs, with no perturbations
-  inputvec = runif(length(getInputNodes(graph)), pertb + 1E-4, 1)
-  names(inputvec) = getInputNodes(graph)
-  dm0 = solveSteadyState(simulation, inputvec)$x
-  dm0 = c(inputvec, dm0)
+  dm0 = solveSteadyState(simulation, inputs)$x
+  dm0 = c(inputs, dm0)
   
   sensmat = c()
-  for (n in nodenames(graph)) {
+  for (n in pertbNodes) {
     #apply perturbation, affects spmax of node
-    if (n %in% names(inputvec)) {
-      inputvec[n] = inputvec[n] - pertb
-      dm = solveSteadyState(simulation, inputvec)$x
-      dm = c(inputvec, dm)
-      inputvec[n] = inputvec[n] + pertb
+    if (n %in% names(inputs)) {
+      inputs[n] = max(inputs[n] - pertb, 0)
+      dm = solveSteadyState(simulation, inputs)$x
+      dm = c(inputs, dm)
+      inputs[n] = inputs[n] + pertb
     } else{
       getNode(simulation@graph, n)$spmax = 1 - pertb
-      dm = solveSteadyState(simulation, inputvec)$x
-      dm = c(inputvec, dm)
+      dm = solveSteadyState(simulation, inputs)$x
+      dm = c(inputs, dm)
     }
     
     #calculate sensitivity

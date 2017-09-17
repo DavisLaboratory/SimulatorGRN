@@ -109,21 +109,21 @@ setMethod(
 #----SimulationGRN: sensitivityAnalysis----
 setGeneric(
   name = 'sensitivityAnalysis',
-  def = function(simulation, pertb) {
+  def = function(simulation, pertb, inputs, pertbNodes) {
     standardGeneric('sensitivityAnalysis')
   }
 )
 
 setMethod(
   f = 'sensitivityAnalysis',
-  signature = c('SimulationGRN', 'numeric'),
+  signature = c('SimulationGRN', 'numeric', 'numeric', 'character'),
   definition = generateSensMat
 )
 
 setMethod(
   f = 'sensitivityAnalysis',
-  signature = c('SimulationGRN', 'missing'),
-  definition = function(simulation, pertb) {
+  signature = c('SimulationGRN', 'missing', 'missing', 'missing'),
+  definition = function(simulation, pertb, inputs, pertbNodes) {
     generateSensMat(simulation, 0.25)
   }
 )

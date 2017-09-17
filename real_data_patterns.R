@@ -4,7 +4,8 @@ datapath = '/wehisan/home/allstaff/b/bhuva.d/data'
 source('/wehisan/home/allstaff/b/bhuva.d/conditional_interactions/code/functions/generate_conditions.R')
 
 #----load required libraries----
-liblist = c('Biobase', 'mclust', 'doParallel', 'parallel', 'foreach', 'plyr', 'iterators')
+liblist = c('Biobase', 'mclust', 'doParallel', 'parallel', 'foreach', 'plyr',
+            'iterators', 'ggplot2', 'grid', 'viridis', 'reshape2')
 for (lib in liblist) {
   library(lib, character.only = T)
 }
@@ -42,27 +43,136 @@ fitModels <- function(x, y){
 cl = makeCluster(5, outfile = '')
 registerDoParallel(cl)
 
-#generate bimodal genes list
+#----generate bimodal genes list----
 conditions = getBimodalGenes(exprmat,Hellinger.thresh = 0.28, WVRS.thresh = exp(-0.35))
 modelinfo = conditions[,1:7]
 conditions = conditions[,-(1:7)]
 stopCluster(cl)
 
-targetlist = rownames(exprmat)
-tflist = nursaNHRs$Symbol[nursaNHRs$Symbol %in% rownames(exprmat)]
+cl = makeCluster(5, outfile = '')
+registerDoParallel(cl)
 
-itcoreg = iter(conditions[1, , drop = F], by = 'row')
-fits <- foreach(coreg = itcoreg, .combine = rbind) %dopar% {
+#----Known interactions----
+targetlist = rownames(exprmat)[rank(-apply(exprmat, 1, var))<5000]
+# tflist = nursaNHRs$Symbol[nursaNHRs$Symbol %in% rownames(exprmat)]
+tflist = c('ESR1', 'AR', 'PGR', 'VDR')
+conds = c(nursaCofs[nursaCofs %in% rownames(conditions)], 'FOXA1', 'GATA3')
+
+itcoreg = iter(conditions[conds, , drop = F], by = 'row')
+fitsKnown <- foreach(coreg = itcoreg, .combine = rbind) %dopar% {
   cond1 =  !is.na(coreg) & coreg == 0
   cond2 =  !is.na(coreg) & coreg == 1
-  res1 = fitModels(t(exprmat[tflist, cond1]), t(exprmat[targetlist, cond1]))
-  res2 = fitModels(t(exprmat[tflist, cond2]), t(exprmat[targetlist, cond2]))
+  res1 = fitModels(t(exprmat[tflist, cond1, drop = F]), t(exprmat[targetlist, cond1, drop = F]))
+  res2 = fitModels(t(exprmat[tflist, cond2, drop = F]), t(exprmat[targetlist, cond2, drop = F]))
   colnames(res1)[3:5] = paste0(colnames(res1)[3:5], '.1')
   colnames(res2)[3:5] = paste0(colnames(res2)[3:5], '.2')
-  res = cbind(res1, res2[, 3:5])
+  res = cbind('cond' = rownames(coreg),res1, res2[, 3:5])
   
   return(res)
 }
+save(fitsKnown, file = 'simdata/lmFits.RData')
+
+#----Random interactions----
+set.seed(360)
+targetlist = rownames(exprmat)[rank(-apply(exprmat, 1, var))<5000]
+tflist = sample(rownames(exprmat), 100)
+conds = sample(rownames(conditions), length(conds))
+
+itcoreg = iter(conditions[conds, , drop = F], by = 'row')
+fitsRandom <- foreach(coreg = itcoreg, .combine = rbind) %dopar% {
+  cond1 =  !is.na(coreg) & coreg == 0
+  cond2 =  !is.na(coreg) & coreg == 1
+  res1 = fitModels(t(exprmat[tflist, cond1, drop = F]), t(exprmat[targetlist, cond1, drop = F]))
+  res2 = fitModels(t(exprmat[tflist, cond2, drop = F]), t(exprmat[targetlist, cond2, drop = F]))
+  colnames(res1)[3:5] = paste0(colnames(res1)[3:5], '.1')
+  colnames(res2)[3:5] = paste0(colnames(res2)[3:5], '.2')
+  res = cbind('cond' = rownames(coreg),res1, res2[, 3:5])
+  
+  return(res)
+}
+save(fitsKnown, fitsRandom, file = 'simdata/lmFits.RData')
+
+stopCluster(cl)
+
+#----plots and statistics----
+fitsRandom = fitsRandom[sample.int(nrow(fitsRandom), 0.5E6), ]
+# fitsKnown = fitsKnown[sample.int(nrow(fitsKnown), 0.5E6), ]
+
+fts1 = fitsRandom[, 1:6]
+fts2 = fitsRandom[, c(1:3, 7:9)]
+colnames(fts1)[4:6] = colnames(fts2)[4:6] = c('m', 'c', 'p')
+fts = melt(fts1, id.vars = c('cond', 'x', 'y'))
+fts$condition2 = melt(fts2, id.vars = c('cond', 'x', 'y'))$value
+colnames(fts)[5] = 'condition1'
+ftsRandom = fts
+
+fts1 = fitsKnown[, 1:6]
+fts2 = fitsKnown[, c(1:3, 7:9)]
+colnames(fts1)[4:6] = colnames(fts2)[4:6] = c('m', 'c', 'p')
+fts = melt(fts1, id.vars = c('cond', 'x', 'y'))
+fts$condition2 = melt(fts2, id.vars = c('cond', 'x', 'y'))$value
+colnames(fts)[5] = 'condition1'
+ftsKnown = fts
+remove(fts1, fts2, fts)
+
+textSize = 1.5
+cof = 'BRCA2'
+p = ggplot(ftsKnown[ftsKnown$cond %in% cof,], aes(condition1, condition2)) + stat_bin2d(aes(fill = log(..count..)), bins = 200, geom="tile") +
+  scale_fill_distiller(palette = 'PRGn', direction = 1) +
+  facet_wrap(~variable, scales = 'free', labeller = label_both, ncol = 3) +
+  geom_hline(yintercept = 0, size = 0.5, linetype = 'dotdash') +
+  geom_vline(xintercept = 0, size = 0.5, linetype = 'dotdash') +
+  ggtitle(paste0('Coregulatory behaviour of: ', cof)) +
+  theme_minimal() +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.title = element_text(size = rel(textSize)),
+    axis.text.x = element_text(angle = 0, size = rel(textSize)),
+    axis.text.y = element_text(angle = 0, size = rel(textSize)),
+    strip.background = element_rect(colour = "gray80", fill = "gray80"),
+    strip.text = element_text(size = rel(textSize)),
+    axis.line = element_line(colour = "black"),
+    axis.ticks = element_line(),
+    legend.position = "bottom",
+    legend.direction = "horizontal",
+    legend.margin = margin(unit(0, "cm")),
+    legend.title = element_text(face = "italic"),
+    plot.title = element_text(
+      face = "bold",
+      size = rel(textSize),
+      hjust = 0.5
+    )
+  )
+
+p = p + geom_density2d(data = ftsRandom, aes(condition1, condition2)) +
+  scale_colour_viridis(option = 'viridis') +
+  facet_wrap(~variable, scales = 'free', labeller = label_both, ncol = 3) +
+  theme_minimal() +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.title = element_text(size = rel(textSize)),
+    axis.text.x = element_text(angle = 0, size = rel(textSize)),
+    axis.text.y = element_text(angle = 0, size = rel(textSize)),
+    strip.background = element_rect(colour = "gray80", fill = "gray80"),
+    strip.text = element_text(size = rel(textSize)),
+    axis.line = element_line(colour = "black"),
+    axis.ticks = element_line(),
+    legend.position = "bottom",
+    legend.direction = "horizontal",
+    legend.margin = margin(unit(0, "cm")),
+    legend.title = element_text(face = "italic"),
+    plot.title = element_text(
+      face = "bold",
+      size = rel(textSize),
+      hjust = 0.5
+    )
+  )
+p
+
+
+
 
 
 
