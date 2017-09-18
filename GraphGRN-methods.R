@@ -394,7 +394,7 @@ removeMissing <- function(graph) {
 #----GraphGRN: specific functions----
 getODEFunc <- function(graph) {
   graph = removeMissing(graph)
-  fn = 'function(exprs, externalInputs) {'
+  fn = 'function(exprs, externalInputs, lnnoise) {'
   
   #define the activation function
   fn = paste(fn, '\tfAct <- function(TF, EC50 = 0.5, n = 1.39) {', sep = '\n')
@@ -405,6 +405,10 @@ getODEFunc <- function(graph) {
   fn = paste(fn, '\t\treturn(act)', sep = '\n')
   fn = paste(fn, '\t}', sep = '\n')
   fn = paste(fn, '\t', sep = '\n')
+  
+  #add biological noise
+  fn = paste(fn, '\texprs = addLNnoise(exprs, lnnoise[1:length(exprs)])', sep = '\n')
+  fn = paste(fn, '\texternalInputs = addLNnoise(externalInputs, lnnoise[-(1:length(exprs))])', sep = '\n')
   
   #function body
   fn = paste(fn, '\tparms = c(list(), externalInputs, exprs)', sep = '\n')
@@ -422,11 +426,40 @@ getODEFunc <- function(graph) {
   #end with
   fn = paste(fn, '\t\treturn(rates)', sep = '\n')
   fn = paste(fn, '\t})', sep = '\n')
-  fn = paste(fn, '\n\treturn(rates)', sep = '\n')
+  
   #end function
+  fn = paste(fn, '\n\treturn(rates)', sep = '\n')
   fn = paste(fn, '}', sep = '\n')
   
   return(eval(parse(text = fn)))
+}
+
+addLNnoise <- function(x, lnorm){
+  #transformation fn
+  f <- function(a, b){
+    fnval = a * exp(-0.01 *( 1 - a/(1 - a))) - b
+    return(fnval)
+  }
+  optf <- function(a, b){
+    fnval = a * exp(-0.01 *( 1 - a/(1 - a))) - b
+    return(abs(fnval))
+  }
+  
+  #transformation
+  y = x
+  tfx = x>=0.65
+  y[tfx] = f(x[tfx], 0)
+  y[!tfx] = x[!tfx]
+  
+  #apply lognormal noise
+  newy = y * lnorm
+  
+  #inverse transformation
+  newx = x
+  tfy = newy>=0.65
+  newx[tfy] = unlist(sapply(newy[tfy], function (a) optim(runif(1), optf, b = a, lower = 0, upper = 1, method = 'Brent', control = list('abstol' = 1E-8))$par))
+  newx[!tfy] = newy[!tfy]
+  return(newx)
 }
 
 rmnode <- function(graph, nodename) {

@@ -3,8 +3,8 @@ setClass(
 	Class = 'SimulationGRN',
 	slots = list(
 		graph = 'GraphGRN',
-		noiseL = 'numeric',
-		noiseG = 'numeric',
+		expnoise = 'numeric',
+		bionoise = 'numeric',
 		seed = 'numeric',
 		inputModels = 'list'
 	)
@@ -25,8 +25,8 @@ setMethod(
 		mxp = 10
 		
 		cat('Graph:', length(object@graph@nodeset), 'nodes,', length(object@graph@edgeset), 'edges', '\n')
-		cat('Local noise ratio:', object@noiseL, '\n')
-		cat('Global noise ratio:', object@noiseG, '\n')
+		cat('Experimental noise sd:', object@expnoise, '\n')
+		cat('Biological noise sd:', object@bionoise, '\n')
 		cat('Randomization seed:', object@seed, '\n')
 	}
 )

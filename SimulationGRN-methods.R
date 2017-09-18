@@ -6,22 +6,22 @@ validSimulationGRN <- function(object) {
 	}
 	
 	#local noise
-	if (object@noiseL<0 | object@noiseL>1) {
-		stop('Local noise ratio must be between 0 and 1')
+	if (object@expnoise<0) {
+		stop('Ecperimental noise standard deviation must be greater than 0')
 	}
 	
 	#global noise
-	if (object@noiseG<0 | object@noiseG>1) {
-		stop('Global noise ratio must be between 0 and 1')
+	if (object@bionoise<0) {
+		stop('Biological noise standard deviation must be greater than 0')
 	}
 	
 	return(TRUE)
 }
 
-initSimulationGRN <- function(.Object, ..., graph, noiseL = 0, noiseG = 0, seed = sample.int(1e6,1), inputModels = list(), propBimodal = 0) {
+initSimulationGRN <- function(.Object, ..., graph, expnoise = 0, bionoise = 0, seed = sample.int(1e6,1), inputModels = list(), propBimodal = 0) {
 	.Object@graph = graph
-	.Object@noiseL = noiseL
-	.Object@noiseG = noiseG
+	.Object@expnoise = expnoise
+	.Object@bionoise = bionoise
 	.Object@seed = seed
 	.Object@inputModels = inputModels
 	
@@ -158,19 +158,19 @@ simDataset <- function(simulation, numsamples, externalInputs) {
 #netbenchmark strategy
 addNoiseC <- function(simulation, simdata){
   genesds = apply(simdata, 1, sd)
-  noiseLsds = runif(length(genesds), 0.8 * simulation@noiseL, 1.2 * simulation@noiseL)
-  noiseLsds = noiseLsds * genesds
+  expnoisesds = runif(length(genesds), 0.8 * simulation@expnoise, 1.2 * simulation@expnoise)
+  expnoisesds = expnoisesds * genesds
   
-  noiseGsds = runif(length(genesds), 0.8 * simulation@noiseG, 1.2 * simulation@noiseG)
-  noiseGsds = noiseGsds * mean(genesds)
+  bionoisesds = runif(length(genesds), 0.8 * simulation@bionoise, 1.2 * simulation@bionoise)
+  bionoisesds = bionoisesds * mean(genesds)
   
   #generate noise matrices
   set.seed(simulation@seed)
   noisematL = c()
   noisematG = c()
   for (i in 1:length(genesds)) {
-    noisematL = rbind(noisematL, rnorm(ncol(simdata), 0, noiseLsds[i]))
-    noisematG = rbind(noisematG, rnorm(ncol(simdata), 0, noiseGsds[i]))
+    noisematL = rbind(noisematL, rnorm(ncol(simdata), 0, expnoisesds[i]))
+    noisematG = rbind(noisematG, rnorm(ncol(simdata), 0, bionoisesds[i]))
   }
   
   rownames(noisematL) = rownames(noisematG) = rownames(simdata)
