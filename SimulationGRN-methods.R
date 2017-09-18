@@ -213,7 +213,7 @@ generateSensMat <- function(simulation, pertb, inputs = NULL, pertbNodes = NULL)
   for (n in pertbNodes) {
     #apply perturbation, affects spmax of node
     if (n %in% names(inputs)) {
-      inputs[n] = max(inputs[n] - pertb, 0)
+      inputs[n] = max(inputs[n] - pertb, 1E-4)
       dm = solveSteadyState(simulation, inputs)$x
       dm = c(inputs, dm)
       inputs[n] = inputs[n] + pertb
@@ -230,7 +230,7 @@ generateSensMat <- function(simulation, pertb, inputs = NULL, pertbNodes = NULL)
     simulation@graph = graph
   }
   
-  rownames(sensmat) = nodenames(graph)
+  rownames(sensmat) = pertbNodes
   sensmat = sensmat[, rownames(sensmat)]
   return(sensmat)
 }
