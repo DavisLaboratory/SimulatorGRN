@@ -92,9 +92,39 @@ createInputModels <- function(simulation, propBimodal) {
   return(simulation)
 }
 
-simDataset <- function(simulation, numsamples, externalInputs) {
+generateInputData <- function(simulation, numsamples) {
   set.seed(simulation@seed)
   
+  innodes = getInputNodes(simulation@graph)
+  externalInputs = matrix(-1,nrow = numsamples, ncol = length(innodes))
+  colnames(externalInputs) = innodes
+  
+  #create input models
+  if (length(simulation@inputModels) == 0) {
+    simulation = generateInputModels(simulation)
+  }
+  
+  #simulate external inputs
+  inmodels = simulation@inputModels
+  for (n in innodes) {
+    m = inmodels[[n]]
+    mix = sample(1:length(m$prop), numsamples, prob = m$prop, replace = T)
+    
+    outbounds = 1
+    while (sum(outbounds) > 0){
+      outbounds = externalInputs[ , n] < 0 | externalInputs[ , n] > 1
+      externalInputs[outbounds & mix == 1, n] = rnorm(sum(outbounds & mix == 1), m$mean[1], m$sd[1])
+      if (length(m$prop) > 1) {
+        externalInputs[outbounds & mix == 2, n] = rnorm(sum(outbounds & mix == 2), m$mean[2], m$sd[2])
+      }
+    }
+  }
+  
+  colnames(externalInputs) = innodes
+  return(externalInputs)
+}
+
+simDataset <- function(simulation, numsamples, externalInputs) {
   #generate input matrix
   innodes = getInputNodes(simulation@graph)
   if (!missing(externalInputs) && !is.null(externalInputs)) {
@@ -104,44 +134,44 @@ simDataset <- function(simulation, numsamples, externalInputs) {
     }
     externalInputs = externalInputs[, innodes]
   } else{
-    externalInputs = matrix(-1,nrow = numsamples, ncol = length(innodes))
-    colnames(externalInputs) = innodes
-    
-    #create input models
-    if (length(simulation@inputModels) == 0) {
-      simulation = generateInputModels(simulation)
-    }
-    
-    #simulate external inputs
-    inmodels = simulation@inputModels
-    for (n in innodes) {
-      m = inmodels[[n]]
-      mix = sample(1:length(m$prop), numsamples, prob = m$prop, replace = T)
-      
-      outbounds = 1
-      while (sum(outbounds) > 0){
-        outbounds = externalInputs[ , n] < 0 | externalInputs[ , n] > 1
-        externalInputs[outbounds & mix == 1, n] = rnorm(sum(outbounds & mix == 1), m$mean[1], m$sd[1])
-        if (length(m$prop) > 1) {
-          externalInputs[outbounds & mix == 2, n] = rnorm(sum(outbounds & mix == 2), m$mean[2], m$sd[2])
-        }
-      }
-    }
-    
-    colnames(externalInputs) = innodes
+    externalInputs = generateInputData(simulation, numsamples)
   }
   
+  #set random seed
+  set.seed(simulation@seed)
+
+  #solve ODE
+  ode = generateODE(simulation@graph)
+  graph = simulation@graph
+  
+  #generate LN noise for simulation
+  lnnoise = exp(rnorm(numsamples * length(nodenames(graph)), 0, simulation@bionoise))
+  lnnoise = matrix(lnnoise, nrow = numsamples, byrow = T)
+  colnames(lnnoise) = nodenames(graph)
+  
+  #initialize solutions
+  nodes = setdiff(nodenames(graph), colnames(externalInputs))
+  exprs = rnorm(length(nodes) * numsamples, mean = 0.5, sd = 0.2 / 3) #3sd = 0.3 range
+  exprs[exprs < 0] = 0
+  exprs[exprs > 1] = 1
+  exprs = matrix(exprs, nrow = numsamples)
+  colnames(exprs) = nodes
+
   #solve ODEs for different inputs
-  emat = c()
-  termcd = c()
-  for (i in 1:numsamples) {
-    soln = solveSteadyState(simulation, externalInputs[i, ])
-    emat = cbind(emat, soln$x)
-    termcd = c(termcd, soln$termcd)
+  res = foreach(i = 1:numsamples, .packages = c('nleqslv'), .combine = cbind) %dopar% {
+    soln = nleqslv(exprs[i, ], ode, externalInputs = externalInputs[i, ], lnnoise = lnnoise[i, ])
+    return(c(soln$x, soln$termcd))
   }
-  emat = rbind(emat, t(externalInputs))
-  colnames(emat) = paste0('sample', 1:numsamples)
   
+  if(numsamples == 1) {
+    res = matrix(res, ncol = 1)
+  }
+  
+  termcd = res[nrow(res),]
+  emat = res[-(nrow(res)), , drop = F]
+  emat = rbind(emat, t(externalInputs))
+  colnames(emat) = paste0('sample_', 1:numsamples)
+
   #check for errors
   if (!all(termcd == 1)) {
     nc = termcd != 1
@@ -150,8 +180,10 @@ simDataset <- function(simulation, numsamples, externalInputs) {
     msg = paste(c(msg, sampleids), collapse = '\n\t')
     msg = paste(msg, 'format: sampleid (termination condition)', sep = '\n\n\t')
     warning(msg)
+
+    emat = emat[, !nc]
   }
-  
+
   return(emat)
 }
 

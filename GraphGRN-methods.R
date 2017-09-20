@@ -198,6 +198,7 @@ generateRateEqn <- function(node, graph) {
   
   logiceqnR = logiceqparser(node@logiceqn, node, graph)
   act = with(list(node, graph), eval(parse(text = logiceqnR)))
+  act = paste('addBioNoise(', act, ', lnnoise[\'', node@name, '\'])', sep = '')
 	
 	#generate rate equation
 	rateEqn = paste(act, node@spmax, sep = ' * ')
@@ -406,10 +407,6 @@ getODEFunc <- function(graph) {
   fn = paste(fn, '\t}', sep = '\n')
   fn = paste(fn, '\t', sep = '\n')
   
-  #add biological noise
-  fn = paste(fn, '\texprs = addLNnoise(exprs, lnnoise[1:length(exprs)])', sep = '\n')
-  fn = paste(fn, '\texternalInputs = addLNnoise(externalInputs, lnnoise[-(1:length(exprs))])', sep = '\n')
-  
   #function body
   fn = paste(fn, '\tparms = c(list(), externalInputs, exprs)', sep = '\n')
   fn = paste(fn, '\trates = exprs * 0', sep = '\n')
@@ -419,7 +416,7 @@ getODEFunc <- function(graph) {
   for (node in graph@nodeset) {
     if(node$name %in% inputNodes)
       next
-    eqn = paste('\t\t', 'rates[\"', node$name, '\"] = ', generateRateEqn(node, graph), sep = '')
+    eqn = paste('\t\t', 'rates[\'', node$name, '\'] = ', generateRateEqn(node, graph), sep = '')
     fn = paste(fn, eqn, sep = '\n')
   }
   
@@ -434,7 +431,11 @@ getODEFunc <- function(graph) {
   return(eval(parse(text = fn)))
 }
 
-addLNnoise <- function(x, lnorm){
+addBioNoise <- function(x, lnorm){
+  if (all(lnorm == 1)) {
+    return(x)
+  }
+  
   #transformation fn
   f <- function(a, b){
     fnval = a * exp(-0.01 *( 1 - a/(1 - a))) - b
@@ -457,7 +458,16 @@ addLNnoise <- function(x, lnorm){
   #inverse transformation
   newx = x
   tfy = newy>=0.65
-  newx[tfy] = unlist(sapply(newy[tfy], function (a) optim(runif(1), optf, b = a, lower = 0, upper = 1, method = 'Brent', control = list('abstol' = 1E-8))$par))
+  newx[tfy] = unlist(sapply(newy[tfy], function (a)
+    optim(
+      runif(1),
+      optf,
+      b = a,
+      lower = 0,
+      upper = 1,
+      method = 'Brent',
+      control = list('abstol' = 1E-8)
+    )$par))
   newx[!tfy] = newy[!tfy]
   return(newx)
 }
