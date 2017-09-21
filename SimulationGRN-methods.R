@@ -141,8 +141,8 @@ simDataset <- function(simulation, numsamples, externalInputs) {
   set.seed(simulation@seed)
 
   #solve ODE
-  ode = generateODE(simulation@graph)
   graph = simulation@graph
+  ode = generateODE(graph)
   
   #generate LN noise for simulation
   lnnoise = exp(rnorm(numsamples * length(nodenames(graph)), 0, simulation@bionoise))
@@ -163,9 +163,7 @@ simDataset <- function(simulation, numsamples, externalInputs) {
     return(c(soln$x, soln$termcd))
   }
   
-  if(numsamples == 1) {
-    res = matrix(res, ncol = 1)
-  }
+  res = rbind(res)
   
   termcd = res[nrow(res),]
   emat = res[-(nrow(res)), , drop = F]
@@ -237,34 +235,68 @@ generateSensMat <- function(simulation, pertb, inputs = NULL, pertbNodes = NULL)
     pertbNodes = intersect(pertbNodes, nodenames(graph))
   }
   
-  #original outputs, with no perturbations
-  dm0 = solveSteadyState(simulation, inputs)$x
-  dm0 = c(inputs, dm0)
+  #generate ODE functions
+  odes = list()
+  graph = simulation@graph
+  ode = generateODE(graph)
+  
+  for (n in pertbNodes) {
+    if (!n %in% names(inputs)) {
+      getNode(graph, n)$spmax = getNode(graph, n)$spmax - pertb
+      odes = c(odes, getODEFunc(graph))
+      getNode(graph, n)$spmax = getNode(graph, n)$spmax + pertb
+    }
+  }
+  names(odes) = setdiff(pertbNodes, names(inputs))
+  
+  #generate LN noise for simulation - 0 noise
+  lnnoise = exp(rep(0, length(nodenames(graph))))
+  names(lnnoise) = nodenames(graph)
+  
+  #initialize solutions
+  nodes = setdiff(nodenames(graph), names(inputs))
+  exprs = rnorm(length(nodes) * (1 + length(pertbNodes)), mean = 0.5, sd = 0.3 / 3) #3sd = 0.3 range
+  exprs[exprs < 0] = 0
+  exprs[exprs > 1] = 1
+  exprs = matrix(exprs, nrow = (1 + length(pertbNodes)))
+  colnames(exprs) = nodes
+  
+  #original solution with no perturbations
+  soln0 = nleqslv(exprs[(1 + length(pertbNodes)), ], ode, externalInputs = inputs, lnnoise = lnnoise)$x
+  soln0 = c(inputs, soln0)
+  
+  #solve ODEs for different perturbations
+  res = foreach(i = 1:length(pertbNodes), .packages = c('nleqslv'), .combine = rbind) %dopar% {
+    n = pertbNodes[i]
+    tempinputs = inputs
+    if (n %in% names(inputs)){
+      odefn = ode
+      tempinputs[n] = max(tempinputs[n] - pertb, 1E-4)
+    } else{
+      odefn = odes[[n]]
+    }
+    
+    soln = nleqslv(exprs[i, ], odefn, externalInputs = tempinputs, lnnoise = lnnoise)$x
+    soln = c(tempinputs, soln)
+    return(soln)
+  }
+  res = rbind(res)
   
   sensmat = c()
-  for (n in pertbNodes) {
-    #apply perturbation, affects spmax of node
-    if (n %in% names(inputs)) {
-      inputs[n] = max(inputs[n] - pertb, 1E-4)
-      dm = solveSteadyState(simulation, inputs)$x
-      dm = c(inputs, dm)
-      inputs[n] = inputs[n] + pertb
-    } else{
-      getNode(simulation@graph, n)$spmax = 1 - pertb
-      dm = solveSteadyState(simulation, inputs)$x
-      dm = c(inputs, dm)
+  for (i in 1:length(pertbNodes)) {
+    n = pertbNodes[i]
+    pertbamt = pertb
+    if (n %in% names(inputs) & inputs[n] == 1E-4) {
+      pertbamt = inputs[n]
     }
     
     #calculate sensitivity
-    sensmat = rbind(sensmat, (dm - dm0)/-pertb * getNode(graph, n)$spmax/dm0)
-    
-    #reset params to old params
-    simulation@graph = graph
+    sensmat = rbind(sensmat, (res[i, ] - soln0)/-pertbamt * getNode(graph, n)$spmax/soln0)
   }
   
   rownames(sensmat) = pertbNodes
-  sensmat = sensmat[, rownames(sensmat)]
   return(sensmat)
 }
+
 
 
