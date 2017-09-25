@@ -520,6 +520,7 @@ rmedge <- function(graph, from, to) {
   precedence = c(4, 3, 2, 5, 1, 1, 0)
   
   nn = paste0('!?', '\\b', from$name, '\\b')
+  nn = paste0('(', nn, '|\\(', nn, '\\))')
   opregexp = '[\\(\\)\\+\\|&]?'
   regexp = paste0(opregexp, nn, opregexp)
   expr = unlist(str_extract_all(logiceq, regexp))
