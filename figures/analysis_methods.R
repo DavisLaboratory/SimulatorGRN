@@ -55,8 +55,10 @@ ftgi.score<-function(emat,conditions){
 		foreach(j=rownames(emat),.combine=rbind) %dopar% {
 			e1=as.numeric(emat[i,])
 			e2=as.numeric(emat[j,])
-			m1=glm(as.factor(conditions)~e1+e2,family=binomial(link='logit'))
-			m2=glm(as.factor(conditions)~e1*e2,family=binomial(link='logit'))
+			# m1=glm(as.factor(conditions)~e1+e2,family=binomial(link='logit'))
+			# m2=glm(as.factor(conditions)~e1*e2,family=binomial(link='logit'))
+			m1=lm(e1~e2+as.factor(conditions))
+			m2=lm(e1~e2*as.factor(conditions))
 			sc=-log10(anova(m1,m2)[2,4])
 			return(sc)
 		}
@@ -68,12 +70,12 @@ diffcoex.score<-function(emat,conditions,beta=1,cor.method='pearson'){
 	expr1=emat[,conditions==1]
 	expr2=emat[,conditions==2]
 	
-	#apply the Fisher transformation
+	#calculate correlations
 	r1=cor(t(expr1),method=cor.method)
 	r2=cor(t(expr2),method=cor.method)
 	D=sqrt(0.5*abs(sign(r1)*r1^2-sign(r2)*r2^2))
 	D=D^beta
-	T=D%*%D+ncol(D)*D
+	T=D%*%D+ncol(D)*D $ #calc topological ovlap
 	
 	mins=matrix(rep(rowSums(D),ncol(D)),nrow=ncol(D))
 	mins=pmin(mins,matrix(rep(colSums(D),each=ncol(D)),nrow=ncol(D)))
