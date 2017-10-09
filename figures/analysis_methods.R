@@ -75,7 +75,7 @@ diffcoex.score<-function(emat,conditions,beta=1,cor.method='pearson'){
 	r2=cor(t(expr2),method=cor.method)
 	D=sqrt(0.5*abs(sign(r1)*r1^2-sign(r2)*r2^2))
 	D=D^beta
-	T=D%*%D+ncol(D)*D $ #calc topological ovlap
+	T=D%*%D+ncol(D)*D #calc topological ovlap
 	
 	mins=matrix(rep(rowSums(D),ncol(D)),nrow=ncol(D))
 	mins=pmin(mins,matrix(rep(colSums(D),each=ncol(D)),nrow=ncol(D)))
@@ -189,4 +189,3 @@ dicer.score<-function(emat,conditions){
 	tscore=((r1-r2)-(mu1-mu2))/sqrt(var1+var2)
 	return(tscore)
 }
-
