@@ -86,11 +86,11 @@ diffcoex.score<-function(emat,conditions,beta=1,cor.method='pearson'){
 ebcoexpress.score<-function(emat,conditions,rand.seed=36,plot=F){
 	set.seed(rand.seed)
 	pat=ebPatterns(c("1,1","1,2"))
-	D=makeMyD(emat, conditions, useBWMC=FALSE)
+	D=makeMyD(emat, conditions, useBWMC=TRUE)
 	initHP=initializeHP(D, conditions)
 	oout=ebCoexpressOneStep(D, conditions, pat, initHP)
 	result1=oout$POSTPROBS
-	ppbDC1=result1[,2]
+	ppbDC1=1-result1[,1]
 	
 	#diagnostic plots if required
 	if(plot){

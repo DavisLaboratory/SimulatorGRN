@@ -643,8 +643,8 @@ randomizeParamsC <- function(graph, type = 'linear', seed) {
   nrange = c(1.39, 6)
   
   if (type %in% 'linear') {
-    ec50range = c(1.01, 1.01)
-    nrange = c(1.39, 1.39)
+    ec50range = c(0.5, 0.5)
+    nrange = c(1.01, 1.01)
   } else if (type %in% 'linear-like') {
     ec50range = c(0.4, 0.6)
     nrange = c(1.01, 1.7)
@@ -652,13 +652,13 @@ randomizeParamsC <- function(graph, type = 'linear', seed) {
     ec50range = c(0.2, 0.8)
     nrange = c(1.01, 1.7)
   } else if (type %in% 'sigmoidal') {
-    ec50range = c(0.4, 0.6)
-    nrange = c(1.39, 6)
-  } else if (type %in% 'all') {
     ec50range = c(0.2, 0.8)
-    nrange = c(1.39, 6)
+    nrange = c(2, 6)
+  } else if (type %in% 'mixed') {
+    ec50range = c(0.2, 0.8)
+    nrange = c(1.01, 6)
   } else{
-    stop('Unknown type specified. Possible types: linear, linear-like, exponential, sigmoidal, all')
+    stop('Unknown type specified. Possible types: linear, linear-like, exponential, sigmoidal, mixed')
   }
   
   #modify parameters
