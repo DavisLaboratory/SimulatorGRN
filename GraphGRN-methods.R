@@ -652,7 +652,7 @@ randomizeParamsC <- function(graph, type = 'linear', seed) {
     ec50range = c(0.2, 0.8)
     nrange = c(1.01, 1.7)
   } else if (type %in% 'sigmoidal') {
-    ec50range = c(0.2, 0.8)
+    ec50range = c(0.4, 0.6)
     nrange = c(2, 6)
   } else if (type %in% 'mixed') {
     ec50range = c(0.2, 0.8)

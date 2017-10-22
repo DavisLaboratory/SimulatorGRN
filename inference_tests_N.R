@@ -71,9 +71,18 @@ plotInference <- function(graph, modulator, scores, topn = 100, truth = NULL) {
        main = 'Inferred network')
 }
 
-relent <- function(truth, prediction){
+relent <- function(truth, prediction, N = 1E6){
   D = truth
   M = prediction
+  
+  #convert prediction to confidence probabilities
+  dM = density(M)
+  #simulate from distribution
+  x.new = rnorm(N, sample(M, size = N, replace = TRUE), dM$bw)
+  #p-values from distribution
+  M = 1 - sapply(M, function(x) min(sum(x.new > x), sum(x.new < x))*2/N)
+  
+  #calculate relative entropy
   term1 = suppressWarnings(D*log(D/M))
   term2 = suppressWarnings((1 - D)*log((1 - D)/(1 - M)))
   term1[is.nan(term1)] = 0
@@ -89,8 +98,8 @@ netSize = 50
 minTFs = 10
 expnoise = 0
 bionoise = 0.1
-simseeds = sample.int(1E7, 25)
-ncores = 10
+simseeds = sample.int(1E7, 30)
+ncores = 5
 allaucs = c()
 allrelents = c()
 
@@ -98,10 +107,10 @@ topn = 100
 fname = paste0('figures/Nruns', '_', originseed, '_', netSize, '_', minTFs,'_N', length(simseeds), '.pdf')
 pdf(file = fname, width = 12, onefile = T)
 
-for (i in 1:length(simseeds)) {
-  message(i)
-  grnSmall = sampleGraph(grnEColi, netSize, minTFs, seed = simseeds[i])
-  simSmall =new('SimulationGRN', graph = grnSmall, seed = simseeds[i], propBimodal = 0, expnoise = expnoise, bionoise = bionoise)
+for (itr in 1:length(simseeds)) {
+  message(itr)
+  grnSmall = sampleGraph(grnEColi, netSize, minTFs, seed = simseeds[itr])
+  simSmall =new('SimulationGRN', graph = grnSmall, seed = simseeds[itr], propBimodal = 0, expnoise = expnoise, bionoise = bionoise)
   
   #select modulator
   iSmall = GraphGRN2igraph(grnSmall)
@@ -116,7 +125,7 @@ for (i in 1:length(simseeds)) {
   #----generate data----
   #Total simulation params
   nsamp = 100
-  set.seed(simseeds[i])
+  set.seed(simseeds[itr])
   
   #modify input models
   prop = runif(1, 0.3, 0.7)
@@ -175,9 +184,9 @@ for (i in 1:length(simseeds)) {
   #exhaust all pairs and include all targets of TFs
   truthmat = matrix(0, nrow = length(nodenames(grnSmall)), ncol = length(nodenames(grnSmall)))
   rownames(truthmat) = colnames(truthmat) = nodenames(grnSmall)
-  for(i in 1:nrow(diffpairs)) {
-    tf = diffpairs[i, 'TF']
-    tgt = diffpairs[i, 'Target']
+  for(j in 1:nrow(diffpairs)) {
+    tf = diffpairs[j, 'TF']
+    tgt = diffpairs[j, 'Target']
     tf = colnames(sensmat1)[abs(sensmat1[tf, ]) > sensthresh * 2]
     truthmat[tf, tgt] = 1
     truthmat[tgt, tf] = 1

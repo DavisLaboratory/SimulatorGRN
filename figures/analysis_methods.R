@@ -170,6 +170,30 @@ mindy.score<-function(emat,conditions,ncores=1,rand.seed=36){
 	m1=mutualInfo(t(expr1),cores=ncores)
 	m2=mutualInfo(t(expr2),cores=ncores)
 	
+	# N1 = ncol(expr1)
+	# N2 = ncol(expr1)
+	# deltaI = foreach(x=1:nrow(expr1), .combine = rbind, .packages = c('MASS')) %:% {
+	#   foreach(y=(x+1):nrow(expr1), .combine = rbind, .packages = c('MASS')) %dopar% {
+	#     d1 = density(expr1[x,], n = N1)$y
+	#     d1 = d1/sum(d1)
+	#     d2 = density(expr1[y,], n = N1)$y
+	#     d2 = d2/sum(d2)
+	#     d12 = kde2d(expr1[x,], expr1[y,], n = N1)$z
+	#     d12 = d12/sum(d12)
+	#     mi1 = sum(log(d12/(d1%*%t(d2)))*d12)
+	#     
+	#     d1 = density(expr2[x,], n = N2)$y
+	#     d1 = d1/sum(d1)
+	#     d2 = density(expr2[y,], n = N2)$y
+	#     d2 = d2/sum(d2)
+	#     d12 = kde2d(expr2[x,], expr2[y,], n = N2)$z
+	#     d12 = d12/sum(d12)
+	#     mi2 = sum(log(d12/(d1%*%t(d2)))*d12)
+	#     
+	#     return()
+	#   }
+	# }
+	# 
 	scoremat=m1-m2
 	scoremat[is.na(scoremat)]=0
 	return(scoremat)
