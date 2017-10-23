@@ -102,8 +102,6 @@ numpertb = 5
 nsamp = 100
 netSize = 80
 minTFs = 10
-expnoise = 0
-bionoise = 0
 
 ncores = detectCores()
 set.seed(originseed)
@@ -115,16 +113,18 @@ allsingscores = c()
 modnames = c()
 simseeds = sample.int(1E7, numsims)
 
-pdfname = paste0('simdata/sep_mu', '_', originseed, '_', netSize, '_', minTFs,'_N', numsims, '.pdf')
-rdname = paste0('simdata/separation_mu_', originseed, '_Ptb', numpertb, '_N', numsims, '.RData')
+pdfname = paste0('simdata/sep_expnoise', '_', originseed, '_', netSize, '_', minTFs,'_N', numsims, '.pdf')
+rdname = paste0('simdata/separation_expnoise_', originseed, '_Ptb', numpertb, '_N', numsims, '.RData')
 
 pdf(file = pdfname, width = 12, onefile = T)
 
 #simulation specific parameters
-mus = expand.grid('mu1' = 0.2,
-                  'mu2' = seq(0.4, 0.8, length.out = numpertb))
-sdevs = expand.grid('sd1' = 0.2,
-                  'sd2' = seq(0.2, 0.2, length.out = numpertb))/3
+expnoise = seq(0, 0.3, length.out = numpertb)
+bionoise = seq(0, 0, length.out = numpertb)
+mus = expand.grid('mu1' = 0.3,
+                  'mu2' = seq(0.7, 0.7, length.out = numpertb))
+sdevs = expand.grid('sd1' = 0.3,
+                  'sd2' = seq(0.3, 0.3, length.out = numpertb))/3
 xs = seq(1, 1, length.out = numpertb)
 props = data.frame('p1' = xs/(1 + xs),
                   'p2' = 1 - xs/(1 + xs))
@@ -149,7 +149,7 @@ for (moditr in 1:numsims) {
   
   for (itr in 1:numpertb) {
     message(paste0('Iter: ', itr))
-    simSmall =new('SimulationGRN', graph = grnSmall, seed = simseeds[moditr], propBimodal = 0, expnoise = expnoise, bionoise = bionoise)
+    simSmall =new('SimulationGRN', graph = grnSmall, seed = simseeds[moditr], propBimodal = 0, expnoise = expnoise[itr], bionoise = bionoise[itr])
     
     #----generate data----
     #Total simulation params
@@ -169,7 +169,6 @@ for (moditr in 1:numsims) {
     registerDoSNOW(cl)
     datamat = simulateDataset(simSmall, nsamp)
     stopCluster(cl)
-    datamat = addNoise(simSmall, datamat)
     
     classf = Mclust(datamat[modinput,], verbose = F)$classification
     if (length(unique(classf)) != 2) {
@@ -254,19 +253,23 @@ for (moditr in 1:numsims) {
     #ROC evaluation
     roclist = lapply(scorelist, function(x) roc(as.numeric(truthmat), x, direction = '<'))
     aucs = lapply(roclist, function(x) x$auc)
-    allaucs = rbind(allaucs, cbind(unlist(aucs), dist, mu[2]-mu[1], sdev[2]/sdev[1], prop[2]/prop[1]))
+    allaucs = rbind(allaucs, cbind(unlist(aucs), dist, mu[2]-mu[1], sdev[2]/sdev[1],
+                                   prop[2]/prop[1], expnoise[itr], bionoise[itr]))
     
     #MI evaluation
     mis = lapply(scorelist, function(x) mutinformation(discretize(x), discretize(as.numeric(truthmat))))
-    allMIs = rbind(allMIs, cbind(unlist(mis), dist, mu[2]-mu[1], sdev[2]/sdev[1], prop[2]/prop[1]))
+    allMIs = rbind(allMIs, cbind(unlist(mis), dist, mu[2]-mu[1], sdev[2]/sdev[1],
+                                 prop[2]/prop[1], expnoise[itr], bionoise[itr]))
     
     #relative entropy evaluation
     relents = lapply(scorelist, function(x) relent(as.numeric(truthmat), x))
-    allrelents = rbind(allrelents, cbind(unlist(relents), dist, mu[2]-mu[1], sdev[2]/sdev[1], prop[2]/prop[1]))
+    allrelents = rbind(allrelents, cbind(unlist(relents), dist, mu[2]-mu[1], sdev[2]/sdev[1],
+                                         prop[2]/prop[1], expnoise[itr], bionoise[itr]))
     
     #mean rank of true positives
     singscore = lapply(scorelist, function(x) mean(rank(x)[as.logical(truthmat)]/length(x)))
-    allsingscores = rbind(allsingscores, cbind(unlist(singscore), dist, mu[2]-mu[1], sdev[2]/sdev[1], prop[2]/prop[1]))
+    allsingscores = rbind(allsingscores, cbind(unlist(singscore), dist, mu[2]-mu[1], sdev[2]/sdev[1],
+                                               prop[2]/prop[1], expnoise[itr], bionoise[itr]))
     
     modnames = c(modnames, modinput)
   }

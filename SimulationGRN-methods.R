@@ -181,41 +181,13 @@ simDataset <- function(simulation, numsamples, externalInputs) {
 
     emat = emat[, !nc]
   }
-
+  
+  #add experimental noise
+  expnoise = rnorm(nrow(emat) * ncol(emat), 0, simulation@expnoise)
+  expnoise = matrix(expnoise, nrow = nrow(emat), byrow = T)
+  emat = emat + expnoise
+  
   return(emat)
-}
-
-#netbenchmark strategy
-addNoiseC <- function(simulation, simdata){
-  genesds = apply(simdata, 1, sd)
-  expnoisesds = runif(length(genesds), 0.8 * simulation@expnoise, 1.2 * simulation@expnoise)
-  expnoisesds = expnoisesds * genesds
-  
-  bionoisesds = runif(length(genesds), 0.8 * simulation@bionoise, 1.2 * simulation@bionoise)
-  bionoisesds = bionoisesds * mean(genesds)
-  
-  #generate noise matrices
-  set.seed(simulation@seed)
-  noisematL = c()
-  noisematG = c()
-  for (i in 1:length(genesds)) {
-    noisematL = rbind(noisematL, rnorm(ncol(simdata), 0, expnoisesds[i]))
-    noisematG = rbind(noisematG, rnorm(ncol(simdata), 0, bionoisesds[i]))
-  }
-  
-  rownames(noisematL) = rownames(noisematG) = rownames(simdata)
-  colnames(noisematL) = colnames(noisematG) = colnames(simdata)
-  
-  #add generated noise to data
-  noisydata = simdata
-  noisydata = log(noisydata + exp(noisematG))
-  noisydata = noisydata + noisematL
-  
-  #ensure range of data is 0-1
-  noisydata[noisydata > 1] = 1
-  noisydata[noisydata < 0] = 0
-  
-  return(noisydata)
 }
 
 generateSensMat <- function(simulation, pertb, inputs = NULL, pertbNodes = NULL) {
