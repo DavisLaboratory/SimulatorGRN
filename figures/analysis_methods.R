@@ -55,11 +55,11 @@ ftgi.score<-function(emat,conditions){
 		foreach(j=rownames(emat),.combine=rbind) %dopar% {
 			e1=as.numeric(emat[i,])
 			e2=as.numeric(emat[j,])
-			# m1=glm(as.factor(conditions)~e1+e2,family=binomial(link='logit'))
-			# m2=glm(as.factor(conditions)~e1*e2,family=binomial(link='logit'))
-			m1=lm(e1~e2+as.factor(conditions))
-			m2=lm(e1~e2*as.factor(conditions))
-			sc=-log10(anova(m1,m2)[2,4])
+			m1=glm(as.factor(conditions)~e1+e2,family=binomial(link='logit'))
+			m2=glm(as.factor(conditions)~e1*e2,family=binomial(link='logit'))
+			# m1=lm(e1~e2+as.factor(conditions))
+			# m2=lm(e1~e2*as.factor(conditions))
+			sc=anova(m1,m2)[2,4]
 			return(sc)
 		}
 	rownames(score) = colnames(score) = rownames(emat)
@@ -84,12 +84,27 @@ diffcoex.score<-function(emat,conditions,beta=1,cor.method='pearson'){
 }
 
 ebcoexpress.score<-function(emat,conditions,rand.seed=36,plot=F){
+  scoremat=matrix(rep(0,nrow(emat)^2),nrow=nrow(emat))
+  colnames(scoremat)=rownames(scoremat)=rownames(emat)
+  
 	set.seed(rand.seed)
 	pat=ebPatterns(c("1,1","1,2"))
 	D=makeMyD(emat, conditions, useBWMC=TRUE)
 	initHP=initializeHP(D, conditions)
-	oout=ebCoexpressOneStep(D, conditions, pat, initHP)
-	result1=oout$POSTPROBS
+	result1 = NULL
+	tryCatch(
+	  expr = {
+	    oout = ebCoexpressOneStep(D, conditions, pat, initHP)
+	    result1 = oout$POSTPROBS
+	  },
+	  error = function(e){
+	    warning(e)
+	  }
+	)
+	
+	if (is.null(result1)){
+	  return(scoremat)
+	}
 	ppbDC1=1-result1[,1]
 	
 	#diagnostic plots if required
@@ -101,8 +116,6 @@ ebcoexpress.score<-function(emat,conditions,rand.seed=36,plot=F){
 	}
 	
 	#convert to matrix
-	scoremat=matrix(rep(0,nrow(emat)^2),nrow=nrow(emat))
-	colnames(scoremat)=rownames(scoremat)=rownames(emat)
 	corpairs=ldply(str_split(names(ppbDC1),'~'))
 	corpairs['prob']=ppbDC1
 	for(i in 1:nrow(corpairs)){
@@ -213,3 +226,33 @@ dicer.score<-function(emat,conditions){
 	tscore=((r1-r2)-(mu1-mu2))/sqrt(var1+var2)
 	return(tscore)
 }
+
+ecf.score<-function(emat,conditions){
+	expr1=emat[,conditions==1]
+	expr2=emat[,conditions==2]
+	
+	#apply the Fisher transformation
+	ecfscore=diff_gen(t(expr1), t(expr2))[[2]]
+	colnames(ecfscore) = rownames(ecfscore) = rownames(emat)
+	return(ecfscore)
+}
+
+la.score<-function(emat, conditions, ncores = 2){
+  emat = rbind(emat, 'cond' = conditions)
+  lalist = fastMLA(t(emat), topn = nrow(emat) ^ 2, nvec = nrow(emat), threads = ncores)
+  closeAllConnections()
+  
+  #convert list to adj matrix
+  lasc = matrix(0, ncol = nrow(emat), nrow = nrow(emat))
+  colnames(lasc) = rownames(lasc) = rownames(emat)
+  if (!is.null(lalist)){
+    for (i in 1:nrow(lalist)) {
+      lasc[lalist[i, 1], lalist[i, 2]] = lalist[i, 5]
+    }
+  }
+  lasc = lasc[-nrow(lasc), -ncol(lasc)]
+  
+  return(lasc)
+}
+
+

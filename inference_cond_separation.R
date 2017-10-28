@@ -24,8 +24,10 @@ library(pROC)
 library(reshape2)
 library(infotheo)
 library(plotly)
+library(COSINE)
+library(fastLiquidAssociation)
 
-originseed = 681997
+originseed = 60897
 
 #----read network----
 df = read.csv('sourceNets/EColi_full.sif', sep = '\t', header = F, stringsAsFactors = F)
@@ -65,7 +67,7 @@ plotInference <- function(graph, modulator, scores, topn = 100, truth = NULL) {
   E(net)$width = 1.5
   
   goldnet = net - E(net)[E(net)$type %in% 'inferred']
-  infnet = net - E(net)[rank(-E(net)$score) > topn]
+  infnet = net - E(net)[rank(-E(net)$score, ties.method = 'min') > topn]
   set.seed(360)
   l = layout_with_fr(goldnet)
   
@@ -77,49 +79,35 @@ plotInference <- function(graph, modulator, scores, topn = 100, truth = NULL) {
        main = 'Inferred network')
 }
 
-relent <- function(truth, prediction){
-  D = truth
-  M = prediction
+scVectorize <- function(scoremat, modin) {
+  modpos = which(rownames(scoremat) %in% modin)
+  scoremat = scoremat[-modpos, -modpos]
+  scoremat = pmax(scoremat, t(scoremat))
+  scoremat = scoremat[upper.tri(scoremat)]
   
-  #convert prediction to confidence probabilities
-  dM = density(M)
-  #p-values from distribution
-  M = sapply(M, function(x) sum(dM$y[dM$x < x])/sum(dM$y))
-  M = 1 - pmin(M, 1 - M) * 2
-  
-  #calculate relative entropy
-  term1 = suppressWarnings(D*log(D/M))
-  term2 = suppressWarnings((1 - D)*log((1 - D)/(1 - M)))
-  term1[is.nan(term1)] = 0
-  term2[is.nan(term2)] = 0
-  H = sum(term1+term2)
-  return(H)
+  return(scoremat)
 }
 
 #----Run multiple simulations----
-numsims = 10
-numpertb = 5
+numsims = 50
+numpertb = 1
 nsamp = 100
-netSize = 80
+netSize = 100#80
 minTFs = 10
+pdfname = paste0('simdata/sep_rep', '_', originseed, '_', netSize, '_', minTFs,'_N', numsims, '_ecoli.pdf')
+rdname = paste0('simdata/separation_rep_', originseed, '_', netSize, '_Ptb', numpertb, '_N', numsims, '_ecoli.RData')
 
 ncores = detectCores()
 set.seed(originseed)
-
 allaucs = c()
-allMIs = c()
-allrelents = c()
 allsingscores = c()
 modnames = c()
 simseeds = sample.int(1E7, numsims)
 
-pdfname = paste0('simdata/sep_expnoise', '_', originseed, '_', netSize, '_', minTFs,'_N', numsims, '.pdf')
-rdname = paste0('simdata/separation_expnoise_', originseed, '_Ptb', numpertb, '_N', numsims, '.RData')
-
 pdf(file = pdfname, width = 12, onefile = T)
 
 #simulation specific parameters
-expnoise = seq(0, 0.3, length.out = numpertb)
+expnoise = seq(0, 0, length.out = numpertb)
 bionoise = seq(0, 0, length.out = numpertb)
 mus = expand.grid('mu1' = 0.3,
                   'mu2' = seq(0.7, 0.7, length.out = numpertb))
@@ -133,8 +121,9 @@ for (moditr in 1:numsims) {
   set.seed(simseeds[moditr])
   message(paste0('Modulator iter: ', moditr))
   
-  #sample a smaller network
+  #sample a smaller network OR use full
   grnSmall = sampleGraph(grnEColi, netSize, minTFs, seed = simseeds[moditr])
+  grnEColi = randomizeParams(grnEColi, 'linear-like', simseeds[moditr])
   
   #select a modulator
   iSmall = GraphGRN2igraph(grnSmall)
@@ -170,7 +159,7 @@ for (moditr in 1:numsims) {
     datamat = simulateDataset(simSmall, nsamp)
     stopCluster(cl)
     
-    classf = Mclust(datamat[modinput,], verbose = F)$classification
+    classf = attr(datamat, 'classf')[modinput, ]
     if (length(unique(classf)) != 2) {
       warning('Non-bimodal condition encountered')
       next
@@ -191,7 +180,7 @@ for (moditr in 1:numsims) {
     sensmat2 = rep(1,nrow(sensmat1)) %*% sensmat2
     stopCluster(cl)
     
-    sensthresh = 0.1
+    sensthresh = 0.05
     sensmat1[abs(sensmat1) < sensthresh] = 0
     sensmat2[abs(sensmat2) < sensthresh] = 0
     s4 = sensmat1 * sensmat2
@@ -205,6 +194,8 @@ for (moditr in 1:numsims) {
     
     if (nrow(diffpairs) == 0) {
       warning('No differential signal present')
+      truthmat = matrix(0, nrow = length(nodenames(grnSmall)), ncol = length(nodenames(grnSmall)))
+      rownames(truthmat) = colnames(truthmat) = nodenames(grnSmall)
       next
     }
     
@@ -235,46 +226,77 @@ for (moditr in 1:numsims) {
     magicsc = magic.score(datamat, classf)
     dicersc = dicer.score(datamat, classf)
     diffcoexsc = diffcoex.score(datamat, classf)
+    ecfsc = ecf.score(datamat, classf)
+    lasc = la.score(datamat, datamat[modinput,])
     # mindysc = mindy.score(datamat, classf, ncores = ncores)
     
     truthmat = truthmat[rownames(zsc), colnames(zsc)]#reorder names in truth matrix
-    scorelist = list('z-score' = as.numeric(abs(zsc)),
-                     'z-score-s' = as.numeric(abs(zspsc)),
-                     'FTGI' = as.numeric(ftgisc),
-                     'EBcoexpress' = as.numeric(ebsc),
-                     'Cai' = as.numeric(abs(caisc)),
-                     'MAGIC' = as.numeric(abs(magicsc)),
-                     'DICER' = as.numeric(abs(dicersc)),
-                     'DiffCoEx' = as.numeric(diffcoexsc)
+    scorelist = list('z-score' = scVectorize(abs(zsc), modinput),
+                     'z-score-s' = scVectorize(abs(zspsc), modinput),
+                     'FTGI' = scVectorize(ftgisc, modinput),
+                     'EBcoexpress' = scVectorize(ebsc, modinput),
+                     'Cai' = scVectorize(abs(caisc), modinput),
+                     'MAGIC' = scVectorize(abs(magicsc), modinput),
+                     'DICER' = scVectorize(abs(dicersc), modinput),
+                     'DiffCoEx' = scVectorize(diffcoexsc, modinput),
+                     'ECF' = scVectorize(ecfsc, modinput),
+                     'LA*' = scVectorize(abs(lasc), modinput)
                      # 'MINDy' = as.numeric(mindysc)
-                     )
+                    )
     
-    dist = 1-sqrt(2*prod(sdev)/sum(sdev^2))*exp(-0.25*diff(mu)^2/sum(sdev^2))
+    #network properties
+    indens = edge_density(graph_from_adjacency_matrix(truthmat))
+    hubscore = hub_score(iSmall)$vector[modinput]
+    ec = eigen_centrality(iSmall)$vector[modinput]
+    dens = edge_density(iSmall)
+    tfsds = mean(apply(datamat[diffpairs$TF, , drop = F], 1, sd))
+    
     #ROC evaluation
-    roclist = lapply(scorelist, function(x) roc(as.numeric(truthmat), x, direction = '<'))
+    roclist = lapply(scorelist, function(x) roc(scVectorize(truthmat, modinput), x, direction = '<'))
     aucs = lapply(roclist, function(x) x$auc)
-    allaucs = rbind(allaucs, cbind(unlist(aucs), dist, mu[2]-mu[1], sdev[2]/sdev[1],
-                                   prop[2]/prop[1], expnoise[itr], bionoise[itr]))
-    
-    #MI evaluation
-    mis = lapply(scorelist, function(x) mutinformation(discretize(x), discretize(as.numeric(truthmat))))
-    allMIs = rbind(allMIs, cbind(unlist(mis), dist, mu[2]-mu[1], sdev[2]/sdev[1],
-                                 prop[2]/prop[1], expnoise[itr], bionoise[itr]))
-    
-    #relative entropy evaluation
-    relents = lapply(scorelist, function(x) relent(as.numeric(truthmat), x))
-    allrelents = rbind(allrelents, cbind(unlist(relents), dist, mu[2]-mu[1], sdev[2]/sdev[1],
-                                         prop[2]/prop[1], expnoise[itr], bionoise[itr]))
+    allaucs = rbind(
+      allaucs,
+      cbind(
+        unlist(aucs),
+        'MuDiff' = mu[2] - mu[1],
+        'VarRatio' = sdev[2] / sdev[1],
+        'PropRatio' = prop[2] / prop[1],
+        'ExpNoise' = expnoise[itr],
+        'BioNoise' = bionoise[itr],
+        'DensityInf' = indens,
+        'HubScore' = hubscore,
+        'EigenCent' = ec,
+        'Density' = dens,
+        'AvgSensitivity' = mean(abs(diffpairs$sensitivity)),
+        'AvgTFsd' = tfsds
+      )
+    )
     
     #mean rank of true positives
-    singscore = lapply(scorelist, function(x) mean(rank(x)[as.logical(truthmat)]/length(x)))
-    allsingscores = rbind(allsingscores, cbind(unlist(singscore), dist, mu[2]-mu[1], sdev[2]/sdev[1],
-                                               prop[2]/prop[1], expnoise[itr], bionoise[itr]))
+    singscore = lapply(scorelist, function(x) mean(rank(x)[as.logical(scVectorize(truthmat, modinput))]/length(x)))
+    allsingscores = rbind(
+      allsingscores,
+      cbind(
+        unlist(singscore),
+        'MuDiff' = mu[2] - mu[1],
+        'VarRatio' = sdev[2] / sdev[1],
+        'PropRatio' = prop[2] / prop[1],
+        'ExpNoise' = expnoise[itr],
+        'BioNoise' = bionoise[itr],
+        'DensityInf' = indens,
+        'HubScore' = hubscore,
+        'EigenCent' = ec,
+        'Density' = dens,
+        'AvgSensitivity' = mean(abs(diffpairs$sensitivity)),
+        'AvgTFsd' = tfsds
+      )
+    )
     
     modnames = c(modnames, modinput)
   }
   
   #store output of runs
+  message(modinput)
   par(mfrow=c(1,2), oma = c(0, 0, 2, 0))
   plotInference(grnSmall, modinput, truthmat, sum(truthmat))
   mtext(paste0("Truth: ", modinput), outer = T, cex = 1.5)
@@ -285,12 +307,10 @@ dev.off()
 
 #add modulator info to measurement dfs
 allaucs = as.data.frame(allaucs, 'Modulator' = modnames)
-allMIs = as.data.frame(allMIs, 'Modulator' = modnames)
-allrelents = as.data.frame(allrelents, 'Modulator' = modnames)
 allsingscores = as.data.frame(allsingscores, 'Modulator' = modnames)
 
-save(allMIs, allaucs, allrelents, allsingscores, originseed, numpertb, numsims,
-     expnoise, bionoise, mus, sdevs, props, file = rdname)
+save(allaucs, allsingscores, originseed, numpertb, numsims,
+     expnoise, bionoise, mus, sdevs, props, modnames, file = rdname)
 
 # #----plot results----
 # data_summary <- function(data, varname, groupnames){
