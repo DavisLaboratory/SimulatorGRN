@@ -1,15 +1,4 @@
 #----SimulationGRN----
-setClass(
-	Class = 'SimulationGRN',
-	slots = list(
-		graph = 'GraphGRN',
-		expnoise = 'numeric',
-		bionoise = 'numeric',
-		seed = 'numeric',
-		inputModels = 'list'
-	)
-)
-
 setValidity('SimulationGRN', validSimulationGRN)
 
 setMethod(

@@ -1,9 +1,10 @@
 setwd('/wehisan/home/allstaff/b/bhuva.d/R_projects/cGRNsimulator')
-source('GraphGRN-methods.R')
+source('Classes.R')
+source('GraphGRN_core.R')
 source('GraphGRN.R')
-source('SimulationGRN-methods.R')
+source('SimulationGRN_core.R')
 source('SimulationGRN.R')
-source('figures/analysis_methods.R')
+source('analysis_methods.R')
 library(nleqslv)
 library(distr)
 library(ggplot2)
@@ -89,13 +90,13 @@ scVectorize <- function(scoremat, modin) {
 }
 
 #----Run multiple simulations----
-numsims = 50
+numsims = 300
 numpertb = 1
 nsamp = 100
-netSize = 100#80
+netSize = 80
 minTFs = 10
-pdfname = paste0('simdata/sep_rep', '_', originseed, '_', netSize, '_', minTFs,'_N', numsims, '_ecoli.pdf')
-rdname = paste0('simdata/separation_rep_', originseed, '_', netSize, '_Ptb', numpertb, '_N', numsims, '_ecoli.RData')
+pdfname = paste0('simdata/sep_INF_', originseed, '_', netSize, '_', minTFs,'_N', numsims, '_ecoli.pdf')
+rdname = paste0('simdata/separation_INF_', originseed, '_', netSize, '_Ptb', numpertb, '_N', numsims, '_ecoli.RData')
 
 ncores = detectCores()
 set.seed(originseed)
@@ -108,14 +109,14 @@ pdf(file = pdfname, width = 12, onefile = T)
 
 #simulation specific parameters
 expnoise = seq(0, 0, length.out = numpertb)
-bionoise = seq(0, 0, length.out = numpertb)
+bionoise = seq(0.0/3, 0.0/3, length.out = numpertb)
 mus = expand.grid('mu1' = 0.3,
                   'mu2' = seq(0.7, 0.7, length.out = numpertb))
 sdevs = expand.grid('sd1' = 0.3,
-                  'sd2' = seq(0.3, 0.3, length.out = numpertb))/3
+                    'sd2' = seq(0.3, 0.3, length.out = numpertb))/3
 xs = seq(1, 1, length.out = numpertb)
 props = data.frame('p1' = xs/(1 + xs),
-                  'p2' = 1 - xs/(1 + xs))
+                   'p2' = 1 - xs/(1 + xs))
 
 for (moditr in 1:numsims) {
   set.seed(simseeds[moditr])
@@ -123,7 +124,7 @@ for (moditr in 1:numsims) {
   
   #sample a smaller network OR use full
   grnSmall = sampleGraph(grnEColi, netSize, minTFs, seed = simseeds[moditr])
-  grnEColi = randomizeParams(grnEColi, 'linear-like', simseeds[moditr])
+  grnSmall = randomizeParams(grnSmall, 'linear-like', simseeds[moditr])
   
   #select a modulator
   iSmall = GraphGRN2igraph(grnSmall)
@@ -183,6 +184,8 @@ for (moditr in 1:numsims) {
     sensthresh = 0.05
     sensmat1[abs(sensmat1) < sensthresh] = 0
     sensmat2[abs(sensmat2) < sensthresh] = 0
+    sensmat1 = sensmat1[colnames(sensmat2), colnames(sensmat2)]
+    sensmat1[sensmat2[1, ] != 0, ] = 0
     s4 = sensmat1 * sensmat2
     s4 = s4[!rownames(s4) %in% modinput, ]
     diffpairs = expand.grid('TF' = rownames(s4), 'Target' = colnames(s4), stringsAsFactors = F)
@@ -227,22 +230,24 @@ for (moditr in 1:numsims) {
     dicersc = dicer.score(datamat, classf)
     diffcoexsc = diffcoex.score(datamat, classf)
     ecfsc = ecf.score(datamat, classf)
-    lasc = la.score(datamat, datamat[modinput,])
+    entsc = ent.score(datamat, classf)
+    # lasc = la.score(datamat, datamat[modinput,])
     # mindysc = mindy.score(datamat, classf, ncores = ncores)
     
     truthmat = truthmat[rownames(zsc), colnames(zsc)]#reorder names in truth matrix
     scorelist = list('z-score' = scVectorize(abs(zsc), modinput),
                      'z-score-s' = scVectorize(abs(zspsc), modinput),
-                     'FTGI' = scVectorize(ftgisc, modinput),
+                     'FTGI' = scVectorize(abs(ftgisc), modinput),
                      'EBcoexpress' = scVectorize(ebsc, modinput),
                      'Cai' = scVectorize(abs(caisc), modinput),
                      'MAGIC' = scVectorize(abs(magicsc), modinput),
                      'DICER' = scVectorize(abs(dicersc), modinput),
                      'DiffCoEx' = scVectorize(diffcoexsc, modinput),
                      'ECF' = scVectorize(ecfsc, modinput),
-                     'LA*' = scVectorize(abs(lasc), modinput)
+                     'ENT' = scVectorize(entsc, modinput)
+                     # 'LA*' = scVectorize(abs(lasc), modinput)
                      # 'MINDy' = as.numeric(mindysc)
-                    )
+    )
     
     #network properties
     indens = edge_density(graph_from_adjacency_matrix(truthmat))
@@ -292,7 +297,7 @@ for (moditr in 1:numsims) {
       )
     )
     
-    modnames = c(modnames, modinput)
+    modnames = c(modnames, paste(modinput, moditr, 'sep' = '_'))
   }
   
   #store output of runs
@@ -301,6 +306,19 @@ for (moditr in 1:numsims) {
   plotInference(grnSmall, modinput, truthmat, sum(truthmat))
   mtext(paste0("Truth: ", modinput), outer = T, cex = 1.5)
   par(mfrow=c(1,1), oma = c(0,0,0,0))
+  
+  #regular saving
+  if (moditr %% 50 == 0) {
+    oldaucs = allaucs
+    oldsingscores = allsingscores
+    allaucs = as.data.frame(allaucs, 'Modulator' = modnames)
+    allsingscores = as.data.frame(allsingscores, 'Modulator' = modnames)
+    
+    save(allaucs, allsingscores, originseed, numpertb, numsims,
+         expnoise, bionoise, mus, sdevs, props, modnames, file = rdname)
+    allaucs = oldaucs
+    allsingscores = oldsingscores
+  }
 }
 
 dev.off()

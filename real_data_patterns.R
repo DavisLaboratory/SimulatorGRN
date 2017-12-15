@@ -116,13 +116,43 @@ ftsKnown = fts
 remove(fts1, fts2, fts)
 
 textSize = 1.5
-cof = 'BRCA2'
-p = ggplot(ftsKnown[ftsKnown$cond %in% cof,], aes(condition1, condition2)) + stat_bin2d(aes(fill = log(..count..)), bins = 200, geom="tile") +
-  scale_fill_distiller(palette = 'PRGn', direction = 1) +
-  facet_wrap(~variable, scales = 'free', labeller = label_both, ncol = 3) +
+cof = 'FOXA1'#HSDL1
+
+get_density <- function(x, y, n = 100) {
+  dens <- MASS::kde2d(x = x, y = y, n = n)
+  ix <- findInterval(x, dens$x)
+  iy <- findInterval(y, dens$y)
+  ii <- cbind(ix, iy)
+  return(dens$z[ii])
+}
+
+plotdf = ftsKnown[ftsKnown$cond %in% cof,]
+plotdf = plotdf[as.character(plotdf$x) != as.character(plotdf$y),]
+datadens = dlply(plotdf, 'variable', function(x) get_density(x$condition1, x$condition2))
+plotdf$density = 0
+plotdf$density[plotdf$variable %in% 'm'] = datadens$m
+plotdf$density[plotdf$variable %in% 'c'] = datadens$c
+plotdf$density[plotdf$variable %in% 'p'] = datadens$p
+
+#sample points to plot: not plotting all points
+probp = plotdf$density[plotdf$variable %in% 'p']
+probp = 1/(probp + 1)
+probp = probp/sum(probp)
+probm = plotdf$density[plotdf$variable %in% 'm']
+probm = 1/(probm + 1)
+probm = probm/sum(probm)
+probc = plotdf$density[plotdf$variable %in% 'c']
+probc = 1/(probc + 1)
+probc = probc/sum(probc)
+nsamp=5000
+
+#plot for coefficient of correlation
+pp = ggplot(plotdf[plotdf$variable %in% 'p', ][sample(1:length(probp), nsamp, prob = probp),]) +
+  geom_point(aes(condition1, condition2, color = density), size = 1) +
+  scale_colour_distiller(palette = 'PRGn', direction = 1) +
   geom_hline(yintercept = 0, size = 0.5, linetype = 'dotdash') +
   geom_vline(xintercept = 0, size = 0.5, linetype = 'dotdash') +
-  ggtitle(paste0('Coregulatory behaviour of: ', cof)) +
+  labs(subtitle = 'Pearson rho') + xlab('Condition 1') + ylab('Condition 2') +
   theme_minimal() +
   theme(
     panel.grid.major = element_blank(),
@@ -141,35 +171,150 @@ p = ggplot(ftsKnown[ftsKnown$cond %in% cof,], aes(condition1, condition2)) + sta
     plot.title = element_text(
       face = "bold",
       size = rel(textSize),
+      hjust = 0.5
+    ),
+    plot.subtitle = element_text(size = rel(textSize))
+  )
+pp = pp + geom_density2d(data = ftsRandom[ftsRandom$variable %in% 'p', ], aes(condition1, condition2))
+
+#plot for slope
+pm = ggplot(plotdf[plotdf$variable %in% 'm', ][sample(1:length(probm), nsamp, prob = probm),]) +
+  geom_point(aes(condition1, condition2, color = density), size = 1) +
+  scale_colour_distiller(palette = 'PRGn', direction = 1) +
+  geom_hline(yintercept = 0, size = 0.5, linetype = 'dotdash') +
+  geom_vline(xintercept = 0, size = 0.5, linetype = 'dotdash') +
+  labs(subtitle = 'slope of lm') + xlab('Condition 1') + ylab('Condition 2') +
+  theme_minimal() +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.title = element_text(size = rel(textSize)),
+    axis.text.x = element_text(angle = 0, size = rel(textSize)),
+    axis.text.y = element_text(angle = 0, size = rel(textSize)),
+    strip.background = element_rect(colour = "gray80", fill = "gray80"),
+    strip.text = element_text(size = rel(textSize)),
+    axis.line = element_line(colour = "black"),
+    axis.ticks = element_line(),
+    legend.position = "bottom",
+    legend.direction = "horizontal",
+    legend.margin = margin(unit(0, "cm")),
+    legend.title = element_text(face = "italic"),
+    plot.title = element_text(
+      face = "bold",
+      size = rel(textSize),
+      hjust = 0.5
+    ),
+    plot.subtitle = element_text(size = rel(textSize))
+  )
+pm = pm + geom_density2d(data = ftsRandom[ftsRandom$variable %in% 'm', ], aes(condition1, condition2))
+
+#plot for intercept
+pc = ggplot(plotdf[plotdf$variable %in% 'c', ][sample(1:length(probc), nsamp, prob = probc),]) +
+  geom_point(aes(condition1, condition2, color = density), size = 1) +
+  scale_colour_distiller(palette = 'PRGn', direction = 1) +
+  geom_hline(yintercept = 0, size = 0.5, linetype = 'dotdash') +
+  geom_vline(xintercept = 0, size = 0.5, linetype = 'dotdash') +
+  labs(subtitle = 'y-intercept of lm') + xlab('Condition 1') + ylab('Condition 2') +
+  theme_minimal() +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.title = element_text(size = rel(textSize)),
+    axis.text.x = element_text(angle = 0, size = rel(textSize)),
+    axis.text.y = element_text(angle = 0, size = rel(textSize)),
+    strip.background = element_rect(colour = "gray80", fill = "gray80"),
+    strip.text = element_text(size = rel(textSize)),
+    axis.line = element_line(colour = "black"),
+    axis.ticks = element_line(),
+    legend.position = "bottom",
+    legend.direction = "horizontal",
+    legend.margin = margin(unit(0, "cm")),
+    legend.title = element_text(face = "italic"),
+    plot.title = element_text(
+      face = "bold",
+      size = rel(textSize),
+      hjust = 0.5
+    ),
+    plot.subtitle = element_text(size = rel(textSize))
+  )
+pc = pc + geom_density2d(data = ftsRandom[ftsRandom$variable %in% 'c', ], aes(condition1, condition2))
+
+ptitle = ggplot() + ggtitle(paste0('Conditional interaction characteristics of gene: ', cof)) + 
+  theme_minimal() +
+  theme(
+    plot.title = element_text(
+      face = "bold",
+      size = rel(textSize+0.5),
       hjust = 0.5
     )
   )
 
-p = p + geom_density2d(data = ftsRandom, aes(condition1, condition2)) +
-  scale_colour_viridis(option = 'viridis') +
-  facet_wrap(~variable, scales = 'free', labeller = label_both, ncol = 3) +
-  theme_minimal() +
-  theme(
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank(),
-    axis.title = element_text(size = rel(textSize)),
-    axis.text.x = element_text(angle = 0, size = rel(textSize)),
-    axis.text.y = element_text(angle = 0, size = rel(textSize)),
-    strip.background = element_rect(colour = "gray80", fill = "gray80"),
-    strip.text = element_text(size = rel(textSize)),
-    axis.line = element_line(colour = "black"),
-    axis.ticks = element_line(),
-    legend.position = "bottom",
-    legend.direction = "horizontal",
-    legend.margin = margin(unit(0, "cm")),
-    legend.title = element_text(face = "italic"),
-    plot.title = element_text(
-      face = "bold",
-      size = rel(textSize),
-      hjust = 0.5
-    )
-  )
-p
+gridsz = 10
+layout = c(rep(c(1, rep(2, gridsz)), gridsz),
+           rep(c(1, rep(3, gridsz)), gridsz),
+           rep(c(1, rep(4, gridsz)), gridsz))
+layout = matrix(layout, ncol = 3 * gridsz)
+
+svg(filename = 'figures/fig 5 - real_patterns_FOXA1.svg', width = 12, height = 6)
+multiplot(ptitle, pm, pc, pp, layout = layout)
+dev.off()
+
+
+
+
+# p = ggplot(plotdf, aes(condition1, condition2)) + stat_bin2d(aes(fill = (..count..)), bins = 200, geom="tile") +
+#   scale_fill_distiller(palette = 'PRGn', direction = 1) +
+#   facet_wrap(~variable, scales = 'free', labeller = label_both, ncol = 3) +
+#   geom_hline(yintercept = 0, size = 0.5, linetype = 'dotdash') +
+#   geom_vline(xintercept = 0, size = 0.5, linetype = 'dotdash') +
+#   ggtitle(paste0('Coregulatory behaviour of: ', cof)) +
+#   theme_minimal() +
+#   theme(
+#     panel.grid.major = element_blank(),
+#     panel.grid.minor = element_blank(),
+#     axis.title = element_text(size = rel(textSize)),
+#     axis.text.x = element_text(angle = 0, size = rel(textSize)),
+#     axis.text.y = element_text(angle = 0, size = rel(textSize)),
+#     strip.background = element_rect(colour = "gray80", fill = "gray80"),
+#     strip.text = element_text(size = rel(textSize)),
+#     axis.line = element_line(colour = "black"),
+#     axis.ticks = element_line(),
+#     legend.position = "bottom",
+#     legend.direction = "horizontal",
+#     legend.margin = margin(unit(0, "cm")),
+#     legend.title = element_text(face = "italic"),
+#     plot.title = element_text(
+#       face = "bold",
+#       size = rel(textSize),
+#       hjust = 0.5
+#     )
+#   )
+# 
+# p = p + geom_density2d(data = ftsRandom, aes(condition1, condition2)) +
+#   scale_colour_viridis(option = 'viridis') +
+#   facet_wrap(~variable, scales = 'free', labeller = label_both, ncol = 3) +
+#   theme_minimal() +
+#   theme(
+#     panel.grid.major = element_blank(),
+#     panel.grid.minor = element_blank(),
+#     axis.title = element_text(size = rel(textSize)),
+#     axis.text.x = element_text(angle = 0, size = rel(textSize)),
+#     axis.text.y = element_text(angle = 0, size = rel(textSize)),
+#     strip.background = element_rect(colour = "gray80", fill = "gray80"),
+#     strip.text = element_text(size = rel(textSize)),
+#     axis.line = element_line(colour = "black"),
+#     axis.ticks = element_line(),
+#     legend.position = "bottom",
+#     legend.direction = "horizontal",
+#     legend.margin = margin(unit(0, "cm")),
+#     legend.title = element_text(face = "italic"),
+#     plot.title = element_text(
+#       face = "bold",
+#       size = rel(textSize),
+#       hjust = 0.5
+#     )
+#   )
+# p
 
 
 

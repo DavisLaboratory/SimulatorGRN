@@ -1,15 +1,4 @@
 #----Node----
-setClass(
-	Class = 'Node',
-	slots = list(
-		name = 'character',
-		spmax = 'numeric',
-		spdeg = 'numeric',
-		inedges = 'character',
-		outedges = 'character',
-		logiceqn = 'character'
-	)
-)
 setValidity('Node', validNode)
 
 setMethod(
@@ -55,13 +44,6 @@ setMethod(
 )
 
 #----NodeRNA----
-setClass(
-	Class = 'NodeRNA',
-	contains = 'Node',
-	slots = list(
-		tau = 'numeric'
-	)
-)
 setValidity('NodeRNA', validNodeRNA)
 
 setMethod(
@@ -93,16 +75,6 @@ setMethod(
 )
 
 #----Edge----
-setClass(
-	Class = 'Edge',
-	slots = list(
-		from = 'character',
-		to = 'character',
-		weight = 'numeric',
-		name = 'character'
-	)
-)
-
 setValidity('Edge', validEdge)
 
 setMethod(
@@ -149,16 +121,6 @@ setGeneric(
 )
 
 #----EdgeReg----
-setClass(
-	Class = 'EdgeReg',
-	contains = 'Edge',
-	slots = list(
-	  EC50 = 'numeric',
-	  n = 'numeric',
-	  activation = 'logical'
-	)
-)
-
 setValidity('EdgeReg', validEdgeReg)
 
 setMethod(
@@ -186,14 +148,6 @@ setMethod(
 )
 
 #----GraphGRN----
-setClass(
-	Class = 'GraphGRN',
-	slots = list(
-		nodeset = 'list',
-		edgeset = 'list'
-	)
-)
-
 setValidity('GraphGRN', validGraphGRN)
 
 setMethod(
