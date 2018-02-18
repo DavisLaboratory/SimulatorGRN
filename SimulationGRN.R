@@ -64,41 +64,55 @@ setMethod(
 #----SimulationGRN: simulateDataset----
 setGeneric(
   name = 'simulateDataset',
-  def = function(simulation, numsamples, externalInputs) {
+  def = function(simulation, numsamples, cor.strength, externalInputs) {
     standardGeneric('simulateDataset')
   }
 )
 
 setMethod(
   f = 'simulateDataset',
-  signature = c('SimulationGRN', 'numeric', 'missing'),
+  signature = c('SimulationGRN', 'numeric', 'missing', 'missing'),
   definition = simDataset
 )
 
 setMethod(
   f = 'simulateDataset',
-  signature = c('SimulationGRN', 'numeric', 'ANY'),
+  signature = c('SimulationGRN', 'numeric', 'numeric', 'missing'),
+  definition = simDataset
+)
+
+setMethod(
+  f = 'simulateDataset',
+  signature = c('SimulationGRN', 'numeric', 'missing', 'ANY'),
   definition = simDataset
 )
 
 #----SimulationGRN: sensitivityAnalysis----
 setGeneric(
   name = 'sensitivityAnalysis',
-  def = function(simulation, pertb, inputs, pertbNodes) {
+  def = function(simulation, pertb, inputs, pertbNodes, tol) {
     standardGeneric('sensitivityAnalysis')
   }
 )
 
 setMethod(
   f = 'sensitivityAnalysis',
-  signature = c('SimulationGRN', 'numeric', 'numeric', 'character'),
+  signature = c('SimulationGRN', 'numeric', 'numeric', 'character', 'numeric'),
   definition = generateSensMat
 )
 
 setMethod(
   f = 'sensitivityAnalysis',
-  signature = c('SimulationGRN', 'missing', 'missing', 'missing'),
-  definition = function(simulation, pertb, inputs, pertbNodes) {
+  signature = c('SimulationGRN', 'numeric', 'numeric', 'character', 'missing'),
+  definition = function(simulation, pertb, inputs, pertbNodes, tol) {
+    generateSensMat(simulation, pertb, inputs, pertbNodes)
+  }
+)
+
+setMethod(
+  f = 'sensitivityAnalysis',
+  signature = c('SimulationGRN', 'missing', 'missing', 'missing', 'missing'),
+  definition = function(simulation, pertb, inputs, pertbNodes, tol) {
     generateSensMat(simulation, 0.25)
   }
 )

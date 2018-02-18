@@ -76,13 +76,14 @@ createInputModels <- function(simulation, propBimodal) {
     if (mxs == 2) {
       parms = c(parms, 'prop' = runif(1, 0.2, 0.8))
       parms$prop = c(parms$prop, 1 - parms$prop)
+      parms$mean = c(rbeta(1, 10, 100), rbeta(1, 10, 10))
     } else {
       parms$prop = 1
+      parms$mean = rbeta(1, 10, 10)
     }
     
-    parms$mean = runif(mxs, 0.1, 0.9)
     maxsd = pmin(parms$mean, 1 - parms$mean) / 3
-    parms$sd = sapply(maxsd, function(x) runif(1, 0.01, x))
+    parms$sd = sapply(maxsd, function(x) max(rbeta(1, 15, 15) * x, 0.01))
     inmodels = c(inmodels, list(parms))
   }
   
@@ -92,7 +93,35 @@ createInputModels <- function(simulation, propBimodal) {
   return(simulation)
 }
 
-generateInputData <- function(simulation, numsamples) {
+#src = https://stats.stackexchange.com/questions/2746/how-to-efficiently-generate-random-positive-semidefinite-correlation-matrices
+#src = Lewandowski, Kurowicka, and Joe (LKJ), 2009
+#lower betaparam gives higher correlations
+vineS <- function(d, betaparam = 5, seed = sample.int(1E6, 1)) {
+  set.seed(seed)
+  P = matrix(rep(0, d ^ 2), ncol = d)
+  S = diag(rep(1, d))
+  
+  for (k in 2:(d - 1)) {
+    for (i in (k + 1):d) {
+      P[k, i] = rbeta(1, betaparam, betaparam)
+      P[k, i] = (P[k, i] - 0.5) * 2
+      p = P[k, i]
+      for (l in (k - 1):1) {
+        p = p * sqrt((1 - P[l, i] ^ 2) * (1 - P[l, k] ^ 2)) + P[l, i] * P[l, k]
+      }
+      S[k, i] = p
+      S[i, k] = p
+    }
+  }
+  
+  permutation = sample(1:d, d)
+  S = S[permutation, permutation]
+  
+  return(S)
+}
+
+# beta = 0 means no correlated inputs, smaller beta means stronger correlations
+generateInputData <- function(simulation, numsamples, cor.strength = 5) {
   set.seed(simulation@seed)
   
   innodes = getInputNodes(simulation@graph)
@@ -127,6 +156,23 @@ generateInputData <- function(simulation, numsamples) {
     }
   }
   
+  #correlated inputs
+  if (cor.strength > 0 & numsamples > 1) {
+    inputs = ncol(externalInputs)
+    dm = apply(externalInputs, 2, sort)
+    covmat = vineS(inputs, cor.strength, simulation@seed)
+    cordata = mvrnorm(numsamples, rep(0, inputs), covmat)
+    for (i in 1:inputs) {
+      if (i %in% which(innodes %in% rownames(classf))) {
+        classf[innodes[i], ] = classf[innodes[i], order(externalInputs[, i]), drop = F]
+        classf[innodes[i], ] = classf[innodes[i], rank(cordata[, i]), drop = F]
+      }
+      cordata[, i] = dm[, i][rank(cordata[, i])]
+    }
+    
+    externalInputs = cordata
+  }
+  
   #add mixture info to attributes
   attr(externalInputs, 'classf') = classf
   
@@ -134,7 +180,12 @@ generateInputData <- function(simulation, numsamples) {
   return(externalInputs)
 }
 
-simDataset <- function(simulation, numsamples, externalInputs) {
+#cor.strength used for generating correlated inputs
+simDataset <- function(simulation, numsamples, cor.strength, externalInputs) {
+  if (missing(cor.strength)) {
+    cor.strength = 5
+  }
+  
   #generate input matrix
   innodes = getInputNodes(simulation@graph)
   if (!missing(externalInputs) && !is.null(externalInputs)) {
@@ -142,10 +193,10 @@ simDataset <- function(simulation, numsamples, externalInputs) {
         length(setdiff(innodes, colnames(externalInputs))) != 0) {
           stop('Invalid externalInputs matrix provided')
     }
-    externalInputs = externalInputs[, innodes]
+    externalInputs = externalInputs[, innodes, drop = F]
     classf = NULL
   } else{
-    externalInputs = generateInputData(simulation, numsamples)
+    externalInputs = generateInputData(simulation, numsamples, cor.strength)
     
     #extract class information
     classf = attr(externalInputs, 'classf')
@@ -177,7 +228,7 @@ simDataset <- function(simulation, numsamples, externalInputs) {
     return(c(soln$x, soln$termcd))
   }
   
-  res = rbind(res)
+  res = cbind(res)
   
   termcd = res[nrow(res),]
   emat = res[-(nrow(res)), , drop = F]
@@ -211,9 +262,13 @@ simDataset <- function(simulation, numsamples, externalInputs) {
   return(emat)
 }
 
-generateSensMat <- function(simulation, pertb, inputs = NULL, pertbNodes = NULL) {
+generateSensMat <- function(simulation, pertb, inputs = NULL, pertbNodes = NULL, tol = 1E-3) {
   set.seed(simulation@seed)
   graph = simulation@graph
+  
+  if (pertb < 0 | pertb > 1) {
+    stop('Perturbation (knock-down) should be between 0 and 1.')
+  }
   
   if (is.null(inputs)) {
     inputs = runif(length(getInputNodes(graph)), pertb + 1E-4, 1)
@@ -266,7 +321,7 @@ generateSensMat <- function(simulation, pertb, inputs = NULL, pertbNodes = NULL)
     tempinputs = inputs
     if (n %in% names(inputs)){
       odefn = ode
-      tempinputs[n] = max(tempinputs[n] - pertb, 1E-4)
+      tempinputs[n] = max(tempinputs[n] * (1 - pertb), 1E-4)
     } else{
       odefn = odes[[n]]
     }
@@ -285,15 +340,11 @@ generateSensMat <- function(simulation, pertb, inputs = NULL, pertbNodes = NULL)
   sensmat = c()
   for (i in 1:length(pertbNodes)) {
     n = pertbNodes[i]
-    pertbamt = pertb
-    if (n %in% names(inputs) & inputs[n] == 1E-4) {
-      pertbamt = inputs[n]
-    }
     
     #calculate sensitivity
     diffexpr = (res[i, ] - soln0)
-    diffexpr[abs(diffexpr)<1E-2] = 0 #small difference resulting from numerical inaccuracies
-    sensmat = rbind(sensmat, diffexpr/-pertbamt * getNode(graph, n)$spmax/soln0)
+    diffexpr[abs(diffexpr) < tol] = 0 #small difference resulting from numerical inaccuracies
+    sensmat = rbind(sensmat, diffexpr/-pertb * getNode(graph, n)$spmax/soln0)
   }
   
   #if base case does not converge, no sensitivity analysis possible
@@ -312,80 +363,112 @@ generateSensMat <- function(simulation, pertb, inputs = NULL, pertbNodes = NULL)
   }
   
   rownames(sensmat) = pertbNodes
+  
+  #since sensitivity calculation depends on the solver, round sensitivities to 
+  #account for such numerical inaccuracies
+  sensmat = round(sensmat, digits = round(-log10(tol)))
+  
   return(sensmat)
 }
 
-# generateSensMat2 <- function(simulation, pertb, inputs = NULL, pertbNodes = NULL) {
-#   set.seed(simulation@seed)
-#   graph = simulation@graph
-#   
-#   if (is.null(inputs)) {
-#     inputs = runif(length(getInputNodes(graph)), pertb + 1E-4, 1)
-#     names(inputs) = getInputNodes(graph)
-#   }else if (!all(getInputNodes(graph) %in% names(inputs))) {
-#     stop('Missing Inputs')
-#   }
-#   
-#   if (is.null(pertbNodes)) {
-#     pertbNodes = nodenames(graph)
-#   } else{
-#     pertbNodes = intersect(pertbNodes, nodenames(graph))
-#   }
-#   
-#   #generate unperturbed ODE function
-#   graph = simulation@graph
-#   ode = generateODE(graph)
-#   
-#   #generate LN noise for simulation - 0 noise
-#   lnnoise = exp(rep(0, length(nodenames(graph))))
-#   names(lnnoise) = nodenames(graph)
-#   
-#   #initialize solutions
-#   nodes = setdiff(nodenames(graph), names(inputs))
-#   exprs = rnorm(length(nodes) * (1 + length(pertbNodes)), mean = 0.5, sd = 0.3 / 3) #3sd = 0.3 range
-#   exprs[exprs < 0] = 0
-#   exprs[exprs > 1] = 1
-#   exprs = matrix(exprs, nrow = (1 + length(pertbNodes)))
-#   colnames(exprs) = nodes
-#   
-#   #original solution with no perturbations
-#   soln0 = nleqslv(exprs[(1 + length(pertbNodes)), ], ode, externalInputs = inputs, lnnoise = lnnoise)$x
-#   soln0 = c(inputs, soln0)
-#   
-#   #solve ODEs for different perturbations
-#   res = foreach(i = 1:length(pertbNodes), .packages = c('nleqslv'), .combine = rbind) %dopar% {
-#     n = pertbNodes[i]
-#     tempinputs = inputs
-#     if (n %in% names(inputs)){
-#       odefn = ode
-#       tempinputs[n] = max(tempinputs[n] - pertb, 1E-4)
-#     } else{
-#       getNode(graph, n)@spmax = getNode(graph, n)@spmax - pertb
-#       odefn = getODEFunc(graph)
-#       getNode(graph, n)@spmax = getNode(graph, n)@spmax + pertb
-#     }
-#     
-#     soln = nleqslv(exprs[i, ], odefn, externalInputs = tempinputs, lnnoise = lnnoise)$x
-#     soln = c(tempinputs, soln)
-#     return(soln)
-#   }
-#   res = rbind(res)
-#   
-#   sensmat = c()
-#   for (i in 1:length(pertbNodes)) {
-#     n = pertbNodes[i]
-#     pertbamt = pertb
-#     if (n %in% names(inputs) & inputs[n] == 1E-4) {
-#       pertbamt = inputs[n]
-#     }
-#     
-#     #calculate sensitivity
-#     sensmat = rbind(sensmat, (res[i, ] - soln0)/-pertbamt * getNode(graph, n)$spmax/soln0)
-#   }
-#   
-#   rownames(sensmat) = pertbNodes
-#   return(sensmat)
-# }
-
-
-
+#only derives the truth when the bimodal genes are input nodes
+getGoldStandard <- function(simulation, threshold = 0.7, assocnet = T, sensmat = NULL) {
+  #extract variables from the model
+  graph = simulation@graph
+  
+  #get bimodal genes
+  bimodal = unlist(lapply(simulation$inputModels, function(x) length(x$prop)))
+  bimodal = names(bimodal)[bimodal == 2]
+  if (length(bimodal) == 0) {
+    stop('No conditional associations in the network')
+  }
+  
+  #perform sensitivity analysis on the model if required
+  inputs = sapply(simulation$inputModels, function(x) x$mean[1])
+  inputs[bimodal] = 0.5
+  names(inputs) = getInputNodes(graph)
+  if (is.null(sensmat)) {
+    sensmat = sensitivityAnalysis(simulation, 0.25, inputs, nodenames(graph))
+  } else if (!all(rownames(sensmat) %in% colnames(sensmat)) |
+             !all(colnames(sensmat) %in% rownames(sensmat))) {
+    stop('Sensitivity matrix must be square and with all genes perturbed')
+  }
+  
+  sensmat = sensmat[, rownames(sensmat)]
+  diag(sensmat) = 0
+  
+  innodes = names(inputs)
+  triplets = c()
+  for (b in bimodal) {
+    #generate a normalized matrix with input node sensitivities
+    inmat = sensmat[innodes, setdiff(colnames(sensmat), innodes)]
+    inmat = abs(inmat) / matrix(1, nrow = nrow(inmat)) %*% colSums(abs(inmat))
+    #identify direct targets and conditionally regulated targets
+    condcoex = c(colnames(inmat)[inmat[b, ] >= threshold], b)
+    coregtgts = colnames(inmat)[inmat[b, ] > 0 & inmat[b, ] < threshold]
+    #identify conditionally dependent pairs
+    diffpairs = sensmat[, coregtgts, drop = F] * matrix(1, nrow = nrow(sensmat)) %*% sensmat[b, coregtgts]
+    diffpairs = sqrt(abs(diffpairs)) * sign(diffpairs)
+    diffpairs[condcoex, ] = 0
+    diffpairs = melt(diffpairs)
+    diffpairs = diffpairs[diffpairs$value != 0, ]
+    colnames(diffpairs) = c('TF', 'Target', 'strength')
+    diffpairs$TF = as.character(diffpairs$TF)
+    diffpairs$Target = as.character(diffpairs$Target)
+    if (nrow(diffpairs) == 0)
+      next
+    diffpairs$inferred = F
+    
+    if (assocnet) {
+      #sibling effect
+      intfs = intersect(unique(diffpairs$TF), innodes)
+      tfpairs = inmat[intfs, , drop = F]
+      tfpairs[sensmat[intfs, colnames(tfpairs)] < 1] = 0
+      
+      #other downstream TFs
+      for (t in setdiff(unique(diffpairs$TF), intfs)) {
+        #discard upstream TF from normalization step
+        tfmat = sensmat[sensmat[, t] == 0, setdiff(colnames(sensmat), innodes)]
+        tfmat = abs(tfmat) / matrix(1, nrow = nrow(tfmat)) %*% colSums(abs(tfmat))
+        tfmat = tfmat[t, , drop = F]
+        tfmat[t, abs(sensmat[t, colnames(tfmat)]) < 1] = 0 #sensitivity thresholdold
+        tfpairs = rbind(tfpairs, tfmat)
+      }
+      
+      #select downstream targets that may be highly correlated
+      tfpairs[abs(tfpairs) < 1] = 0
+      tfpairs = melt(tfpairs)
+      tfpairs = tfpairs[tfpairs$value != 0 & ! is.na(tfpairs$value), ]
+      tfpairs[, 1] = as.character(tfpairs[, 1])
+      tfpairs[, 2] = as.character(tfpairs[, 2])
+      colnames(tfpairs)[1:2] = c('TF', 'newTF')
+      
+      if (nrow(tfpairs) != 0) {
+        #add TFs to conditionally regulated pairs list
+        tfpairs = merge(diffpairs, tfpairs, by = 'TF')
+        tfpairs$strength = tfpairs$strength * tfpairs$value
+        tfpairs = tfpairs[, c(5, 2:4)]
+        colnames(tfpairs)[1] = 'TF'
+        tfpairs$inferred = T
+        #remove duplicates
+        tfpairs = tfpairs[order(abs(tfpairs$strength), decreasing = T), ]
+        tfpairs = tfpairs[!duplicated(tfpairs[, 1:2]), ]
+        diffpairs = rbind(diffpairs, tfpairs)
+      }
+    }
+    
+    diffpairs = diffpairs[diffpairs$TF != diffpairs$Target, ]
+    
+    triplets = rbind(triplets, cbind('cond' = b, diffpairs))
+  }
+  
+  #restructure triplets dataframe
+  triplets = triplets[order(abs(triplets$strength), decreasing = T), ]
+  rownames(triplets) = NULL
+  triplets[,2:3] = t(apply(triplets[,2:3],1,sort))
+  colnames(triplets)[1:3] = c('cond', 'x', 'y')
+  triplets$known = T
+  triplets$strength = -triplets$strength #positive correlation with z-scores
+  
+  return(triplets)
+}
