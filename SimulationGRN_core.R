@@ -163,11 +163,12 @@ generateInputData <- function(simulation, numsamples, cor.strength = 5) {
     covmat = vineS(inputs, cor.strength, simulation@seed)
     cordata = mvrnorm(numsamples, rep(0, inputs), covmat)
     for (i in 1:inputs) {
+      #avoid correlated bimodal inputs
       if (i %in% which(innodes %in% rownames(classf))) {
-        classf[innodes[i], ] = classf[innodes[i], order(externalInputs[, i]), drop = F]
-        classf[innodes[i], ] = classf[innodes[i], rank(cordata[, i]), drop = F]
+        cordata[, i] = externalInputs[, i]
+      } else {
+        cordata[, i] = dm[, i][rank(cordata[, i])]
       }
-      cordata[, i] = dm[, i][rank(cordata[, i])]
     }
     
     externalInputs = cordata
@@ -284,18 +285,8 @@ generateSensMat <- function(simulation, pertb, inputs = NULL, pertbNodes = NULL,
   }
   
   #generate ODE functions
-  odes = list()
   graph = simulation@graph
   ode = generateODE(graph)
-  
-  for (n in pertbNodes) {
-    if (!n %in% names(inputs)) {
-      getNode(graph, n)$spmax = getNode(graph, n)$spmax - pertb
-      odes = c(odes, getODEFunc(graph))
-      getNode(graph, n)$spmax = getNode(graph, n)$spmax + pertb
-    }
-  }
-  names(odes) = setdiff(pertbNodes, names(inputs))
   
   #generate LN noise for simulation - 0 noise
   lnnoise = exp(rep(0, length(nodenames(graph))))
@@ -316,14 +307,16 @@ generateSensMat <- function(simulation, pertb, inputs = NULL, pertbNodes = NULL,
   soln0 = c(inputs, soln0)
   
   #solve ODEs for different perturbations
-  res = foreach(i = 1:length(pertbNodes), .packages = c('nleqslv'), .combine = rbind) %dopar% {
+  res = foreach(i = 1:length(pertbNodes), .combine = rbind) %do% {
     n = pertbNodes[i]
     tempinputs = inputs
     if (n %in% names(inputs)){
       odefn = ode
       tempinputs[n] = max(tempinputs[n] * (1 - pertb), 1E-4)
     } else{
-      odefn = odes[[n]]
+      getNode(graph, n)$spmax = getNode(graph, n)$spmax - pertb
+      odefn = getODEFunc(graph)
+      getNode(graph, n)$spmax = getNode(graph, n)$spmax + pertb
     }
     
     soln = nleqslv(exprs[i, ], odefn, externalInputs = tempinputs, lnnoise = lnnoise)
@@ -397,15 +390,20 @@ getGoldStandard <- function(simulation, threshold = 0.7, assocnet = T, sensmat =
   sensmat = sensmat[, rownames(sensmat)]
   diag(sensmat) = 0
   
+  #generate condcoex mat
+  condcoexmat = sensmat[bimodal, , drop = F] * 0
+  
   innodes = names(inputs)
   triplets = c()
   for (b in bimodal) {
     #generate a normalized matrix with input node sensitivities
     inmat = sensmat[innodes, setdiff(colnames(sensmat), innodes)]
     inmat = abs(inmat) / matrix(1, nrow = nrow(inmat)) %*% colSums(abs(inmat))
+    inmat[is.nan(inmat)] = 0
     #identify direct targets and conditionally regulated targets
     condcoex = c(colnames(inmat)[inmat[b, ] >= threshold], b)
     coregtgts = colnames(inmat)[inmat[b, ] > 0 & inmat[b, ] < threshold]
+    condcoexmat[b, condcoex] = 1
     #identify conditionally dependent pairs
     diffpairs = sensmat[, coregtgts, drop = F] * matrix(1, nrow = nrow(sensmat)) %*% sensmat[b, coregtgts]
     diffpairs = sqrt(abs(diffpairs)) * sign(diffpairs)
@@ -465,10 +463,95 @@ getGoldStandard <- function(simulation, threshold = 0.7, assocnet = T, sensmat =
   #restructure triplets dataframe
   triplets = triplets[order(abs(triplets$strength), decreasing = T), ]
   rownames(triplets) = NULL
-  triplets[,2:3] = t(apply(triplets[,2:3],1,sort))
-  colnames(triplets)[1:3] = c('cond', 'x', 'y')
+  # triplets[,2:3] = t(apply(triplets[,2:3],1,sort))
+  # colnames(triplets)[1:3] = c('cond', 'x', 'y')
   triplets$known = T
   triplets$strength = -triplets$strength #positive correlation with z-scores
+  
+  #export condcoexmat as attribute
+  attr(triplets, 'condcoex') = condcoexmat
+  
+  return(triplets)
+}
+
+#only derives the truth when the bimodal genes are input nodes
+getGoldStandard2 <- function(simulation, sensmat = NULL) {
+  #extract variables from the model
+  graph = simulation@graph
+  
+  #get bimodal genes
+  bimodal = unlist(lapply(simulation$inputModels, function(x) length(x$prop)))
+  bimodal = names(bimodal)[bimodal == 2]
+  if (length(bimodal) == 0) {
+    stop('No conditional associations in the network')
+  }
+  
+  #perform sensitivity analysis on the model if required
+  inputs = sapply(simulation$inputModels, function(x) x$mean[1])
+  inputs[bimodal] = 0.5
+  names(inputs) = getInputNodes(graph)
+  if (is.null(sensmat)) {
+    sensmat = sensitivityAnalysis(simulation, 0.25, inputs, nodenames(graph))
+  } else if (!all(rownames(sensmat) %in% names(inputs)) |
+             !all(colnames(sensmat) %in% nodenames(graph))) {
+    stop('Sensitivity matrix must be square and with all genes perturbed')
+  }
+  
+  sensmat[cbind(rownames(sensmat), rownames(sensmat))] = 0
+  sensmat = abs(sensmat) > 0.01
+  
+  #generate condcoex mat
+  condcoexmat = sensmat[bimodal, , drop = F] * 0
+  triplets = c()
+  for (b in bimodal) {
+    if (sum(sensmat[b, ]) == 0)
+      next
+    
+    #identify direct targets and conditionally regulated targets
+    bmat = sensmat[, sensmat[b, ], drop = F]
+    bmat = bmat[rowSums(bmat) != 0, , drop = F]
+    condcoex = colnames(bmat)[bmat[b, ] & colSums(bmat) == 1]
+    coregtgts = colnames(bmat)[bmat[b, ] & colSums(bmat) > 1]
+    condcoexmat[b, condcoex] = 1
+    
+    #identify conditionally dependent pairs
+    bmat = bmat[!rownames(bmat) %in% b, coregtgts, drop = F]
+    diffpairs = melt(bmat)
+    diffpairs = diffpairs[diffpairs$value, 1:2]
+    colnames(diffpairs) = c('TF', 'Target')
+    diffpairs$TF = as.character(diffpairs$TF)
+    diffpairs$Target = as.character(diffpairs$Target)
+    if (nrow(diffpairs) == 0)
+      next
+    
+    #select downstream genes for coregulating inputs
+    diffpairs = ddply(diffpairs, 'Target', function(x) {
+      newtfs = colnames(sensmat)[colSums(sensmat[x$TF, , drop = F]) == colSums(sensmat) &
+                                   colSums(sensmat) != 0]
+      diffdf = data.frame('TF' = c(x$TF, newtfs), stringsAsFactors = F)
+      return(diffdf)
+    })
+    
+    diffpairs = diffpairs[diffpairs$TF != diffpairs$Target, ]
+    triplets = rbind(triplets, cbind('cond' = b, diffpairs[, 2:1]))
+  }
+  
+  #restructure triplets dataframe
+  rownames(triplets) = NULL
+  triplets$known = T
+  
+  #distances
+  nodedist = distances(GraphGRN2igraph(graph), mode = 'out')
+  nodedist = melt(nodedist)
+  names(nodedist) = c('TF', 'Target', 'Dist')
+  triplets = merge(triplets, nodedist, all.x = T)
+  triplets = triplets[, c(3, 1:2, 4:ncol(triplets))]
+  triplets$Direct = triplets$Dist==1
+  triplets$Influence = !is.infinite(triplets$Dist)
+  triplets$Association = T
+  
+  #export condcoexmat as attribute
+  attr(triplets, 'condcoex') = condcoexmat
   
   return(triplets)
 }
